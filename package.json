@@ -1,0 +1,36 @@
+{
+  "name": "brslint",
+  "version": "0.1.5",
+  "description": "BrightScript Lint",
+  "preferGlobal": true,
+  "bin": {
+    "brslint": "./cli.js"
+  },
+  "engines": {
+    "node": ">=4.0.0"
+  },
+  "files": [
+    "ast.js",
+    "brs.js",
+    "brslint.js",
+    "cli.js",
+    "pprint.js",
+    "preprocessor.js",
+    "moo/moo.js"
+  ],
+  "repository": "https://github.com/nbcnews/brslint.git",
+  "scripts": {
+    "test": "test"
+  },
+  "keywords": [
+    "brightscript",
+    "lint"
+  ],
+  "author": "j-denisb",
+  "license": "MIT",
+  "dependencies": {
+    "cli-color": "^1.0.0",
+    "minimist": "^1.2.0",
+    "nearley": "^2.13.0"
+  }
+}
