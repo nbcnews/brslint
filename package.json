@@ -31,6 +31,6 @@
   "dependencies": {
     "cli-color": "^1.0.0",
     "minimist": "^1.2.0",
-    "nearley": "^2.13.0"
+    "nearley": "2.13.0"
   }
 }
