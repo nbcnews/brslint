@@ -2,7 +2,7 @@
 
 'use strict'
 
-var lint = require('./brslint.js'),
+const lint = require('./brslint.js'),
     print = require('./pprint.js'),
     fs = require('fs'),
     pth = require('path'),
@@ -22,26 +22,28 @@ var lint = require('./brslint.js'),
         }
     })
 
-main(args._[0])
+main()
 
-function main(path)
+function main()
 {
     if (args.debug) {
         console.log(args)
     }
 
-    path = path || '.'
-    var start = process.hrtime()
-    var totalErrors = 0
-    var allFunctions = []
-    var files = readdir(path, '.brs')
+    let start = process.hrtime()
+    let totalErrors = 0
+    let allFunctions = []
+
+    const config = (args._[0])?
+        defaultConfig(args) :
+        readconfig(args)
+
+    var files = readdir(config, '.brs', args.recursive)
 
     if (files.length === 0) {
-        console.log(color.yellow('Warning') + ": Couldn't find any BrightScript files in '%s'\n", path)
+        console.log(color.yellow('Warning') + ": Couldn't find any BrightScript files to lint")
         process.exit(0)
     }
-
-    files.sort(pathSort)
 
     files.forEach(function (file) {
         var input = fs.readFileSync(file, 'utf8')
@@ -50,7 +52,7 @@ function main(path)
 
         if (args.message !== 'silent') {
             if (args.message !== 'errors' || result.errors.length > 0) {
-                console.log(color.black(name) + color.move(30 - name.length,0) + color.blackBright(pth.dirname(pth.relative(path, file))))
+                console.log(color.black(name) + ' '.repeat(Math.max(30 - name.length, 1)) + color.blackBright(pth.dirname(file)))
             }
             showErrors(result.errors, file)
         }
@@ -68,7 +70,7 @@ function main(path)
             } else {
                 let out = print.pretty(result.ast)
 
-                let writePath = pth.join(process.cwd(), args.p.trim(), pth.dirname(pth.relative(path, file)), name)
+                let writePath = pth.join(process.cwd(), args.p.trim(), pth.dirname(file), name)
                 try {
                     fs.mkdirSync(pth.dirname(writePath))
                 } catch(x) { }
@@ -112,28 +114,36 @@ function showWarnings(warnings) {
     }
 }
 
-function readdir(path, ext) {
-    var files = []
-    var paths = [path]
+function readdir(config, ext, recursive) {
+    let files = []
+    let paths = config.paths.include || ['.']
+    const exclude = config.paths.exclude || []
+    let nodups = {}
 
     while (paths.length > 0) {
-        path = paths.pop()
+        let path = paths.pop()
         try {
-            var stat = fs.statSync(path)
+            let stat = fs.statSync(path)
 
-            if (stat.isDirectory()) {
-                fs.readdirSync(path).forEach(function (f) {
-                    paths.push(pth.join(path, f))
-                })
-            }
-            else if (stat.isFile() && pth.extname(path) === ext) {
-                files.push(path)
+            if (stat.isDirectory() && recursive) {
+                for (let entry of fs.readdirSync(path)) {
+                    const e = pth.join(path, entry)
+                    if (!exclude.includes(e)) {
+                        paths.push(e)
+                    }
+                }
+            } else if (stat.isFile() && pth.extname(path) === ext) {
+                if (!nodups[path]) {
+                    files.push(path)
+                    nodups[path] = true
+                }
             }
         }
         catch (x) {
         }
     }
 
+    files.sort(pathSort)
     return files
 }
 
@@ -145,4 +155,27 @@ function pathSort(a, b) {
     else if (ad < bd)
         return -1
     return a.localeCompare(b)
+}
+
+function readconfig(args) {
+    try {
+        let configString = fs.readFileSync('brslint.config', 'utf8')
+        let config = JSON.parse(configString)
+        config.paths = config.paths || {}
+        return config
+    } catch (x) {
+        return defaultConfig(args)
+    }
+}
+
+function defaultConfig(args) {
+    let config = {
+        paths: {
+            include: [args._[0] || '.'],
+            exclude: []
+        },
+        recursive: args.recursive || true,
+    }
+
+    return config
 }
