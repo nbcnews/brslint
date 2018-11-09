@@ -12,7 +12,7 @@ function traverse(node, callback, ctx) {
     let cx = callback(node, ctx) || ctx
 
     for (const key in node) {
-        if (node.hasOwnProperty(key)) {
+        if (key != 'tokens' && node.hasOwnProperty(key)) {
             const prop = node[key];
             if (Array.isArray(prop)) {
                 for (const el of prop) {
@@ -20,6 +20,31 @@ function traverse(node, callback, ctx) {
                 }
             } else if (typeof(prop) === 'object') {
                 traverse(prop, callback, cx)
+            }
+        }
+    }
+}
+
+function traverseRule(node, rule, warnings) {
+    if (!node) return
+
+    if (node.node === rule.node && 
+        (!rule.tokens || node.tokens.length === rule.tokens)) {
+        let l = rule.check(node, rule.check)
+        if (l) warnings.push(
+            { s: rule.level, msg: rule.message, loc: l }
+        )
+    }
+
+    for (const key in node) {
+        if (node.hasOwnProperty(key)) {
+            const prop = node[key];
+            if (Array.isArray(prop)) {
+                for (const el of prop) {
+                    traverseRule(el, rule, warnings)
+                }
+            } else if (typeof(prop) === 'object') {
+                traverseRule(prop, rule, warnings)
             }
         }
     }
@@ -89,5 +114,13 @@ module.exports = {
         traverse(f, unassignedVar)
         return warnings
     },
+
+    lint: (ast, g, rules) => {
+        let w = []
+        for (let rule of rules) {
+            traverseRule(ast, rule, w)
+        }
+        return w
+    }
 }
 

@@ -1,7 +1,8 @@
 function program(t) {
     return {
         libs:       t[0],
-        functions:  t[1]
+        functions:  t[1],
+        tokens: xtok(t)
     }
 }
 
@@ -20,54 +21,94 @@ function lib(t) {
 
 function functions(t) {
     let fns = t[0]
-    return fns.map(f => { check_fn(f); return f[1] })
+    return fns.map(f => {
+        f[1].comments = f[0]
+        return f[1]
+    })
 }
 
 function func(t) {
-    const ret = t[7]? t[7][3][0].value : null
-    const statements = t[8]
+    const ret = t[7]? t[7][3].value : null
+    const statements = t[8].statements
 
     return {
         node: t[0].value,
         name: t[2].val,
-        params: t[5],
+        params: t[5].params,
         return: ret,
-        statements: statements
+        statements: statements,
+
+        tokens: xtok(t)
     }
 }
 
 function afunc(t) {
-    const ret = t[5]? t[5][3][0].value : null
+    const ret = t[5]? t[5][3].value : null
     const statements = t[6]
 
     return {
         node: t[0].value,
         name: '',
-        params: t[3],
+        params: t[3].params,
         return: ret,
-        statements: statements
+        statements: statements,
+
+        tokens: xtok(t)
     }
 }
 
 function params(t) {
-    if (t.length == 1) return []
+    if (t.length == 1) return {node: 'params', params:[], token: t[0]}
     let p = [t[1], ...t[2].map(e => e[3])]
-    return p
+    return {
+        node: 'params',
+        params: p,
+        tokens: xtok(t)
+    }
 }
 
 function param(t) {
     return {
         node: 'param',
         name: t[0].val,
-        type: t[2] ? t[2][0].value : null,
-        default: t[1]
+        type: t[2] ? t[2][3].value : null,
+        default: t[1]? t[1][3] : null,
+
+        tokens: xtok(t)
     }
 }
 
+function xtok(t) {
+    if (!t) return null
+    if (Array.isArray(t)) {
+        return t.map(_ => xtok(_))
+    }
+    if (t.token) return t.token
+    if (t.tokens) return t.tokens
+    return t
+}
+
 function statements(t) {
-    const sep = t[1][0]
+    const tok = []
+    for (let e of t[0]) {
+        tok.push(e[0], xtok(e[1][0]))
+    }
+    tok.push(t[1])
     const s = t[0].map(e => e[1][0])
-    return s
+    return {
+        node: 'statements',
+        statements: s,
+        tokens: tok
+    }
+}
+
+function statement_separators(t) {
+    let x = []
+    for (let a of t[0]) {
+        x.push(...a)
+    }
+    if (t[1]) x.push(t[1])
+    return x.filter(_ => _)
 }
 
 function forloop(t) {
@@ -75,14 +116,16 @@ function forloop(t) {
     const start = t[6]
     const to = t[10]
     const step = t[11]? t[11][3] : null
-    const statements = t[12]
+    const statements = t[12].statements
     return {
         node: 'for',
         var: id,
         start: start,
         to: to,
         step: step,
-        statements: statements
+        statements: statements,
+
+        tokens: xtok(t)
     }
 }
 function foreach(t) {
@@ -90,14 +133,18 @@ function foreach(t) {
         node: 'foreach',
         var: t[4],
         in: t[8],
-        statements: t[10]
+        statements: t[10].statements,
+
+        tokens: xtok(t)
     }
 }
 function whileloop(t) {
     return {
         node: 'while',
         condition: t[2],
-        statements: t[4]
+        statements: t[3].statements,
+
+        tokens: xtok(t)
     }
 }
 
@@ -110,77 +157,92 @@ function print(t) {
 
 function assign(t) {
     const op = t[2][0].value
+    let tok = xtok(t)
+    tok[2] = tok[2][0]
 
     if (op === '=')
         return {
             node: '=',
             op: op,
             lval: t[0],
-            rval: t[4]
+            rval: t[4],
+            tokens: tok
         }
     else
         return {
             node: 'assignop',
             op: op,
             lval: t[0],
-            rval: t[4]
+            rval: t[4],
+            tokens: tok
         }
 }
 
 function incdec(t) {
     return {
         node: t[2],
-        lval: t[0]
+        lval: t[0],
+        tokens: xtok(t)
     }
 }
 
 function returnst(t) {
     return {
         node: 'return',
-        val:  t[1] ? t[1][1] : null
+        val:  t[1] ? t[1][1] : null,
+        tokens: xtok(t)
     }
 }
 
 function ifst(t) {
-    check_if(t[0])
-    check_endif(t[4])
-    check_condition(t[1])
-    const condition = t[1][1]
+    t.splice(1,1, ...t[1])
+    const condition = t[2]
     let node = {
         node: 'if',
         condition: condition,
-        then: t[1][3],
+        then: t[4].statements,
+        tokens: xtok(t)
     }
     let last = node
-    for (let e of t[2].map(elseif)) {
+    for (let e of t[5].map(elseif)) {
         last.else = [e]
         last = e
     }
-    if (t[3]) last.else = t[3][1][0]
+    if (t[6]) {
+        if (t[6][1].statements)
+            last.else = t[6][1].statements
+        else
+            last.else = []
+    }
     return node
 }
 function elseif(t) {
     return {
         node: 'if',
-        condition: t[2],
-        then: t[4]
+        condition: t[1][1],
+        then: t[1][3].statements,
+        tokens: xtok([t[0], ...t[1]])
     }
 }
 
 function oneline_if(t) {
     const cond = t[2]
-    const then = t[5]
-    const els = t[6]? t[6][3] : null
+    const then = t[5][0]
+    const els = t[6]? t[6][3][0] : null
+    let tok = xtok(t)
+    tok[5] = tok[5][0]
     return {
         node: 'if',
         condition: cond,
         then: then,
-        else: els
+        else: els,
+
+        tokens: tok
     }
 }
 
 function comment(t) {
-    return t[0].text
+    return t[0]
 }
 
 function expr(t) {
@@ -188,93 +250,112 @@ function expr(t) {
 }
 
 function uop(t) {
+    let tok = xtok(t)
+    if (Array.isArray(tok[0])) tok[0] = tok[0][0]
+
     return {
         node: 'uop',
-        op: t[0].value || t[0][0].value,
-        right: t[2]
+        op: tok[0].value,
+        right: t[2],
+        tokens: tok
     }
 }
 
 function bop(t) {
+    let tok = xtok(t)
+    if (Array.isArray(tok[2])) tok[2] = tok[2][0]
+
     return {
         node: 'bop',
-        op: t[2].value || t[2][0].value,
+        op: tok[2].value,
         left: t[0],
-        right: t[4]
+        right: t[4],
+
+        tokens: tok
     }
 }
 
 function parenthesis(t) {
+    t[2].tokens = xtok(t) 
     return t[2]
-    return {
-        node: '()',
-        expr: t[2]
-    }
 }
 
 function lval(t) {
     if (t.length == 1) return t[0]
-    return Object.assign({accessors: t[1].concat(t[2])}, t[0])
+    let node = Object.assign({}, t[0])
+    node.token = null
+    node.accessors = t[1].concat(t[2])
+    node.tokens = xtok([t[0], t[1].concat(t[2])])
+    return node
 }
 
 function access(t) {
 // IDENTIFIER access_or_call:* xmlattr:?
     if (t[0].node === 'id') {
-        return Object.assign({accessors: t[1]}, t[0])
+        return Object.assign({accessors: t[1], tokens:xtok(t), token:null}, t[0])
     }
     let a = t[1]
     if (t[2]) a.push(t[2])
-    return { node: 'access', expr: t[0], accessors: a }
+    return { node: 'access', expr: t[0], accessors: a, tokens:xtok(t) }
 }
 function prop(t) {
 //_ "." _ PROP_NAME
-    return { node: 'prop', name: t[3].name }
+    return { node: 'prop', name: t[3].name,
+        
+        tokens: xtok(t)
+    }
 }
 function index(t) {
 //    _ "[" _ EXPR (_ "," _ EXPR):* _ "]" 
-    //console.log('index:', t)
     let ix = [t[3]]
     ix.push(...t[4].map(e => e[3]))
-    return { node: 'index', indexes: ix }
+    return { node: 'index', indexes: ix, tokens: xtok(t) }
 }
 function xmlattr(t) {
-    return { node: 'xmlattr', name: t[3]}
+    return { node: 'xmlattr', name: t[3], tokens: xtok(t)}
 }
 function call(t) {
-//_ "(" call_args ")"
-    return { node: 'call', args: t[2] }
+    if (t.length === 4)
+        return {
+            node: 'call',
+            args: [],
+            tokens: xtok(t)
+        }
+    let args = [t[3]]
+    args.push(...t[4].map(e => e[3]))
+    return { 
+        node: 'call',
+        args: args,
+        tokens: xtok(t)
+    }
 }
-function callargs(t) {
-//_ (rval _ "," _):* rval _ | _
-    if (t.length == 1) return []
-    let a = t[1].map(v => v[0])
-    a.push(t[2])
-    return a
-}
+
 
 function string(t) {
     t = t[0]
-    return {node: 'string', val: t.text, li: {line: t.line, col: t.col}}
+    return {node: 'string', val: t.text, li: {line: t.line, col: t.col}, token:t}
 }
 function number(t) {
     t = t[0]
-    return {node: 'number', val: t.text, li: {line: t.line, col: t.col}}
+    return {node: 'number', val: t.text, li: {line: t.line, col: t.col}, token:t}
 }
 function identifier(t) {
     t = t[0]
-    let n = {node: 'id', val: t.text, li: {line: t.line, col: t.col}}
+    let n = {node: 'id', val: t.text, li: {line: t.line, col: t.col}, token:t}
     return n
 }
 function constant(t) {
     t = t[0]
-    return {node: 'const', val: t.text, li: {line: t.line, col: t.col}}
+    return {node: 'const', val: t.text, li: {line: t.line, col: t.col}, token:t}
 }
 
 function name(t) {
     return {
         node: 'name',
         name: t[0].val,
-        li: t[0].li
+        li: t[0].li,
+
+        token: xtok(t[0])
     }
 }
 function dim(t) {
@@ -282,13 +363,18 @@ function dim(t) {
         node: 'dim',
         name: t[2],
         // array of expressions
-        dimentions: t[6]
+        dimentions: t[6].expressions,
+        tokens: xtok[t]
     }
 }
 function expr_list(t) {
     let exs = t[0].map(e => e[0])
     exs.push(t[1])
-    return exs
+    return {
+        node: 'expressions',
+        expressions: exs,
+        tokens: xtok(flat(t).filter(_=>_))
+    }
 }
 function exit(t) {
     let node = (t.length === 3 && t[2].value === 'for') ?
@@ -296,17 +382,20 @@ function exit(t) {
         'exitwhile'
 
     return {
-        node: node
+        node: node,
+        token: xtok(t)
     }
 }
 function stop(t) {
     return {
-        node: 'stop'
+        node: 'stop',
+        token: xtok(t[0])
     }
 }
 function end(t) {
     return {
-        node: 'end'
+        node: 'end',
+        token: xtok(t[0])
     }
 }
 
@@ -351,7 +440,9 @@ function print_separators(t) {
     return t.filter(f=>f).map(e => {
         return {
             node: 'separator',
-            val: e.text
+            val: e.text,
+
+            token: e
         }
     })
 }
@@ -367,6 +458,7 @@ module.exports = {
     'params': params,
     'param': param,
     'statements': statements,
+    'statement_separators': statement_separators,
     'dim': dim,
     'for': forloop,
     'foreach': foreach,
@@ -382,7 +474,6 @@ module.exports = {
     'index': index,
     'xmlattr': xmlattr,
     'call': call,
-    'callargs': callargs,
     'access': access,
     'expr': expr,
     'assign': assign,
@@ -404,17 +495,6 @@ module.exports = {
     'constant': constant
 }
 
-function check_if(t) {
-    if (t.text != 'if') {
-        //style warning about if 
-    }
-}
-function check_endif(t) {
-    if (t.text != 'end if') {
-        //style warning about end if spacing
-        //or capitalization
-    }
-}
 function check_condition(t) {
     if (t[0] == null) {
         //console.log("  W: no space after if" )
@@ -435,4 +515,16 @@ function check_fn(t) {
         return a
     }
     //console.log(cmts.reduce(reducer, ''))
+}
+
+const flat = d => {
+    let a = []
+    for (const e of d) {
+        if (Array.isArray(e)) {
+            a.push(...flat(e))
+        } else {
+            a.push(e)
+        }
+    }
+    return a
 }

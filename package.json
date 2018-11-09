@@ -1,6 +1,6 @@
 {
   "name": "brslint",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "BrightScript Lint",
   "preferGlobal": true,
   "bin": {
@@ -16,6 +16,7 @@
     "cli.js",
     "pprint.js",
     "preprocessor.js",
+    "rules.js",
     "moo/moo.js"
   ],
   "repository": "https://github.com/nbcnews/brslint.git",
