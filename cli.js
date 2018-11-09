@@ -67,6 +67,9 @@ function main()
                     allFunctions.push(f)
                     showWarnings(lint.style(f, globalFnNames))
                 })
+                
+                const rules = require('./rules')(config.rules)
+                showWarnings(lint.lint(result.ast, globalFnNames, rules))
             } else {
                 let out = print.pretty(result.ast)
 

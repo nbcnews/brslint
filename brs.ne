@@ -28,7 +28,7 @@ let lexer = moo.compile({
     op:         /<>|<=|>=|<<|>>|\+=|-=|\*=|\/=|\\=|<<=|>>=/,
     othr:       /./
 })
-const n = (i) => (d) => d[i]
+const u = d => d[0][0]
 const l = (s) => (d) => s
 const flat = d => {
     let a = []
@@ -75,20 +75,20 @@ params -> _ param (_ "," _ param):* _                                           
 
 param -> IDENTIFIER param_default:? param_type:?                                {% ast.param %}
 
-param_default -> _ "=" _ rval                                                   {% n(3) %}
+param_default -> _ "=" _ rval                                                   
 
-param_type -> _ "as" __ ptype                                                   {% n(3) %}
+param_type -> _ "as" __ ptype                                                   
 
-ptype -> type {% id %} | "function"
-rtype -> type {% id %} | "void"
+ptype -> type {% u %} | "function" {% id %}
+rtype -> type {% u %} | "void"     {% id %}
 type -> "boolean" | "integer" | "longinteger" | "float" | "double" | "string" | "object" | "dynamic"
 # "Interface" is not allowed in param or return
 
 statement_list -> 
   (statement_separators statement):* statement_separators                       {% ast.statements %}
 
-statement_separators -> statement_separator:+
-statement_separator -> NL | _ ":" _
+statement_separators -> statement_separator:+ _                                 {% ast.statement_separators %}
+statement_separator -> NL | _ ":"
 
 statement -> 
     if_statement
@@ -126,26 +126,27 @@ if_statement ->
     ("else" statement_list_or_space):?
     endif                                   {% ast.if %}
 |   oneline_if                              {% id %}
-else_if -> elseif if_body                   {% flat %}
+
+else_if -> elseif if_body
 # using EXPR for conditional because while roku allows to have literal arrays and
 # objects and functions in conditions, during complilation they allways fail at runtime
 # so it is better to use EXPR and catch those errors early.
 if_body -> _ EXPR (_ "then"):? statement_list
 
-elseif -> "else" __ "if"   {%id%}
-       |  "elseif"         {%id%}
-endif -> "end" __ "if"     {%id%}
-       | "endif"           {%id%}
+elseif -> "else" __ "if"
+       |  "elseif"
+endif -> "end" __ "if"
+       | "endif"
 
 # space in "else if" below is important! Will error on "elseif"
-oneline_if -> "if" _ EXPR _ ("then" _):? oneline_statement
-              (__ "else" __ oneline_statement):?                                {% ast.oneline_if %}
+oneline_if -> "if" _ EXPR (_ "then"):? _ oneline_statement
+              (_ "else" __ oneline_statement):?                                {% ast.oneline_if %}
 
 # enables following "valid" BRS code 
 #   if bool then op()
 #   else endif 
 # notice that there is no statement separator between else and endif
-statement_list_or_space -> statement_list | __
+statement_list_or_space -> statement_list {% id %} | __ {% id %}
 
 # end if -------------------
 
@@ -158,11 +159,11 @@ for_loop ->
 end_for -> "end" __ "for" | "endfor" | "next" (__ IDENTIFIER):?
 # `endfor :` <- results in error, `next :` is ok :(
 for_each ->
-    "for" _ "each" __ IDENTIFIER __ "in" _ rval _ statement_list end_for_each   {% ast.foreach %}
+    "for" _ "each" __ IDENTIFIER __ "in" _ rval statement_list end_for_each     {% ast.foreach %}
 end_for_each -> "end" __ "for" | "endfor" | "next"
 
 while_loop ->
-    "while" _ EXPR _ statement_list ("end" __ "while" | "endwhile")             {% ast.while %}
+    "while" _ EXPR statement_list ("end" __ "while" | "endwhile")               {% ast.while %}
 
 # `exitfor` not allowed, must be `exit for` 
 exit_loop -> "exit" __ "while"                                                  {% ast.exit %}
@@ -201,9 +202,8 @@ lval ->
 access -> 
     _ "." _ PROP_NAME                                                           {% ast.prop %}
 |   _ "[" _ EXPR (_ "," _ EXPR):* _ "]"                                         {% ast.index %}
-call -> _ "(" call_args ")"                                                     {% ast.call %}
-call_args ->  _                                                                 {% ast.callargs %}
-          |   _ (rval _ "," _):* rval _                                         {% ast.callargs %}
+call -> _ "(" _ rval (_ "," _ rval):* _ ")"                                     {% ast.call %}
+      | _ "(" _ ")"                                                             {% ast.call %}        
 xmlattr -> _ "@" _ IDENTIFIER                                                   {% ast.xmlattr %}
 
 PROP_NAME ->
