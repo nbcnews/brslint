@@ -28,9 +28,8 @@ function traverse(node, callback, ctx) {
 function traverseRule(node, rule, warnings) {
     if (!node) return
 
-    if (node.node === rule.node && 
-        (!rule.tokens || node.tokens.length === rule.tokens)) {
-        let l = rule.check(node, rule.check)
+    if (node.node === rule.node) {
+        let l = rule.check(node)
         if (l) warnings.push(
             { s: rule.level, msg: rule.message, loc: l }
         )
