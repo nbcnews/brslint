@@ -34,23 +34,23 @@ class end_if extends rule(4) {
     constructor() {
         super()
         this.node = 'if'
-        this.tokens = 8
-        this._message = "Must use `end if`"
+        this._message = "`if` should end with `end if`"
     }
 
     check(node) {
-        if (node.tokens[7].length !== 3) {
+        const last = node.tokens[node.tokens.length - 1]
+        if (match(last, ['endif']) || 
+            match(last, ['end',,'if']) && last[1].value != ' ') {
             return location(node.tokens[7][0])
         }
     }
 }
 
-class empty_then extends rule(3) {
+class no_empty_then extends rule(3) {
     constructor() {
         super()
         this.node = 'if'
-        this.tokens = 8
-        this._message = "if` should not have empty `then`"
+        this._message = "`if` should not have empty `then`"
     }
 
     check(node) {
@@ -64,7 +64,6 @@ class then extends rule(4) {
     constructor() {
         super()
         this.node = 'if'
-        this.tokens = 8
         this._message = "`if` must have `then`"
     }
 
@@ -91,16 +90,16 @@ class then_space extends rule(4) {
     }
 }
 
-class empty_else extends rule(3) {
+class no_empty_else extends rule(3) {
     constructor() {
         super()
         this.node = 'if'
-        this.tokens = 8
         this._message = "`if` should not have empty `else`"
     }
 
     check(node) {
-        if (node.else && node.else.length === 0) {
+        if (node.tokens[6] &&
+            node.tokens[6][1].length === 1) {
             return location(node.tokens[6][0])
         }
     }
@@ -169,12 +168,11 @@ class sub_with_return extends rule(3) {
     }
 }
 
-
 const classRules = [
     function_too_big,
     end_if,
-    empty_then, then, then_space,
-    empty_else, if_parentheses,
+    no_empty_then, then, then_space,
+    no_empty_else, if_parentheses,
     return_type,
     function_type,
     sub_with_return
@@ -200,6 +198,7 @@ function defaultRules(level) {
 }
 
 function location(t) {
+    if (Array.isArray(t)) return location(t[0])
     return t.line + "," + t.col
 }
 
@@ -207,19 +206,46 @@ function location(t) {
 function* statements(node, depth) {
     if (Array.isArray(node)) {
         for (let s of node) {
-            yield [s, depth]
+            yield* statements(s, depth)
         }
     } else {
         yield [node, depth]
+
+        if (node.statements) {
+            yield* statements(node.statements, depth + 1)
+        }
+        if (node.then) {
+            yield* statements(node.then, depth + 1)
+        }
+        if (node.else) {
+            yield* statements(node.else, depth + 1)
+        }
+    }
+}
+
+function match(target, ...patterns) {
+    if (!target) return false
+
+    if (Array.isArray(target)) {
+        target = target.map(_ => _.value)
+    } else {
+        target = target.value
     }
 
-    if (node.statements) {
-        yield* statements(node.statements, depth + 1)
+    for (const pattern of patterns) {
+        if (sameAs(target, pattern)) {
+            return true
+        }
     }
-    if (node.then) {
-        yield* statements(node.then, depth + 1)
+    return false
+}
+
+function sameAs(a, b) {
+    if (a.length != b.length) return false
+    for (let i = 0; i < a.length; i++) {
+        if (b[i] !== undefined && a[i] !== b[i]) {
+            return false
+        }
     }
-    if (node.else) {
-        yield* statements(node.else, depth + 1)
-    }
+    return true
 }
