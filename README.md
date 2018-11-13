@@ -69,7 +69,7 @@ Some rules can be provided with custom values. In the example below `keyword_for
 {
     "rules": {
         "include": [
-            no_empty_then",
+            "no_empty_then",
             "no_empty_else"
         ],
         "custom": {
@@ -89,4 +89,19 @@ Some rules can be provided with custom values. In the example below `keyword_for
 }
 ```
 
+You can change severity level of any rule
 
+```
+{
+    "rules": {
+        "include": [
+            "no_empty_else"
+        ],
+        "custom": {
+            "no_empty_then": {
+                "level": 1
+            }
+        }
+    }
+}
+```
