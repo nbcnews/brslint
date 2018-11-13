@@ -8,17 +8,17 @@ const lint = require('./brslint.js'),
     pth = require('path'),
     color = require('cli-color'),
     args = require('minimist')(process.argv.slice(2), {
-        alias: { 'm': 'message', 'f': 'format', 'w': 'warning', '#': 'preprocessor', 'd': 'debug' },
-        string: ['message', 'format', 'warning', 'ast'],
-        boolean: ['recursive', 'warningsaserrors', 'preprocessor', 'debug'],
+        alias: { 'm': 'message', 'f': 'format', 'w': 'warning', 'e': 'error', '#': 'preprocessor', 'd': 'debug' },
+        string: ['message', 'format', 'warning', 'ast', 'error'],
+        boolean: ['recursive', 'preprocessor', 'debug'],
         default: {
-            warningsaserrors: false,
             recursive: true,
             preprocessor: true,
             debug: false,
             message: 'all',
             format: 'pretty',
-            warning: '4'
+            warning: null,
+            error: '1'
         }
     })
 
@@ -68,8 +68,8 @@ function main()
                     showWarnings(lint.style(f, globalFnNames))
                 })
                 
-                const rules = require('./rules')(config.rules)
-                showWarnings(lint.lint(result.ast, globalFnNames, rules))
+                const rules = require('./rules')(config.rules, parseInt(args.warning))
+                totalErrors += showWarnings(lint.lint(result.ast, globalFnNames, rules))
             } else {
                 let out = print.pretty(result.ast)
 
@@ -108,13 +108,22 @@ function showErrors(errors, file) {
 }
 
 function showWarnings(warnings) {
+    const errorLevel = parseInt(args.error) || 1
+    let errorCount = 0
+    warnings.sort(warningOrder)
+
     if (args.message == 'all') {
-        warnings.forEach( function (warning) {
-            if (warning.level <= parseInt(args.warning)) {
+        for (const warning of warnings) {
+            if (warning.level <= errorLevel) {
+                console.log(color.redBright('  Error: ') + warning.message + ' @' + warning.loc)
+                errorCount += 1
+            } else {
                 console.log(color.yellowBright('  Warning: ') + warning.message + ' @' + warning.loc)
             }
-        })
+        }
     }
+
+    return errorCount
 }
 
 function readdir(config, ext, recursive) {
@@ -158,6 +167,22 @@ function pathSort(a, b) {
     else if (ad < bd)
         return -1
     return a.localeCompare(b)
+}
+
+function warningOrder(a, b) {
+    if (a.level > b.level) {
+        return 1
+    } else if (a.level < b.level) {
+        return -1
+    }
+    const aa = a.loc.split(',')[0]
+    const bb = b.loc.split(',')[0]
+    if (aa.length > bb.length) {
+        return 1
+    } else if (aa.length < bb.length) {
+        return -1
+    }
+    return  aa.localeCompare(bb)
 }
 
 function readconfig(args) {
