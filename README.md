@@ -48,7 +48,7 @@ and `directory/file.brs` will be linted. While files in `directory1/subdirectory
 }
 ```
 
-You can select custom set of rules as shown below  
+You can select your own set of rules as shown below  
 
 ```
 {
@@ -62,3 +62,31 @@ You can select custom set of rules as shown below
     }
 }
 ```
+
+Some rules can be provided with custom values. In the example below `keyword_formatting` rule will check that keywords like `end if` have a single space and capitalised using Pascal rules, i.e `Function`, `While`, `End For`.
+
+```
+{
+    "rules": {
+        "include": [
+            no_empty_then",
+            "no_empty_else"
+        ],
+        "custom": {
+            "keyword_formatting": {
+                "space": "single",
+                "case": "pascal",
+                "keywords": {
+                    "?": "print",
+                    "and": "AND",
+                    "or": "OR",
+                    "not": "NOT",
+                    "mod": "MOD"
+                }
+            }
+        }
+    }
+}
+```
+
+
