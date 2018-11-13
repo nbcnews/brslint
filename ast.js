@@ -131,9 +131,9 @@ function forloop(t) {
 function foreach(t) {
     return {
         node: 'foreach',
-        var: t[4],
-        in: t[8],
-        statements: t[10].statements,
+        var: t[2],
+        in: t[6],
+        statements: t[7].statements,
 
         tokens: xtok(t)
     }
@@ -151,7 +151,8 @@ function whileloop(t) {
 function print(t) {
     return {
         node: 'print',
-        items: t[1] // expressions and separataros
+        items: t[1], // expressions and separataros
+        tokens: xtok(t)
     }
 }
 
@@ -364,7 +365,7 @@ function dim(t) {
         name: t[2],
         // array of expressions
         dimentions: t[6].expressions,
-        tokens: xtok[t]
+        tokens: xtok(t)
     }
 }
 function expr_list(t) {

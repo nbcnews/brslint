@@ -7,8 +7,26 @@ const rule = defaultLevel => class {
     static get level() {
         return defaultLevel
     }
-    get message() {
-        return this._message
+    static createWithProps(props) {
+        let inst = Reflect.construct(this, [])
+        for (const prop in props) {
+            if (typeof inst[prop] === typeof props[prop] && prop.substring(0,0) !== '_') {
+                inst[prop] = props[prop]
+            }
+        }
+        return inst
+    }
+
+    get node() {
+        return this._node
+    }
+
+    warning(token, message) {
+        return {
+            message: message || this.message,
+            level: this.level,
+            loc: location(token)
+        }
     }
 }
 
@@ -16,16 +34,16 @@ const rule = defaultLevel => class {
 class function_too_big extends rule(3) {
     constructor() {
         super()
-        this.node = 'function'
+        this._node = 'function'
         this.lines = 100
-        this._message = `function longer than ${this.lines} lines`
+        this.message = `function longer than ${this.lines} lines`
     }
 
     check(node) {
         const last = node.tokens.length - 1
         const lines = node.tokens[last][0].line - node.tokens[0].line
         if (lines > this.lines) {
-            return location(node.tokens[0])
+            return this.warning(node.tokens[0])
         }
     }
 }
@@ -33,15 +51,15 @@ class function_too_big extends rule(3) {
 class end_if extends rule(4) {
     constructor() {
         super()
-        this.node = 'if'
-        this._message = "`if` should end with `end if`"
+        this._node = 'if'
+        this.message = "`if` should end with `end if`"
     }
 
     check(node) {
         const last = node.tokens[node.tokens.length - 1]
         if (match(last, ['endif']) || 
             match(last, ['end',,'if']) && last[1].value != ' ') {
-            return location(node.tokens[7][0])
+            return this.warning(node.tokens[7][0])
         }
     }
 }
@@ -49,13 +67,13 @@ class end_if extends rule(4) {
 class no_empty_then extends rule(3) {
     constructor() {
         super()
-        this.node = 'if'
-        this._message = "`if` should not have empty `then`"
+        this._node = 'if'
+        this.message = "`if` should not have empty `then`"
     }
 
     check(node) {
         if (node.then.length === 0) {
-            return location(node.tokens[4][0][0])
+            return this.warning(node.tokens[4][0][0])
         }
     }
 }
@@ -63,13 +81,13 @@ class no_empty_then extends rule(3) {
 class then extends rule(4) {
     constructor() {
         super()
-        this.node = 'if'
-        this._message = "`if` must have `then`"
+        this._node = 'if'
+        this.message = "`if` must have `then`"
     }
 
     check(node) {
         if (!node.tokens[3]) {
-            return location(node.tokens[0])
+            return this.warning(node.tokens[0])
         }
     }
 }
@@ -77,15 +95,15 @@ class then extends rule(4) {
 class then_space extends rule(4) {
     constructor() {
         super()
-        this.node = 'if'
-        this._message = "Must have single space before `then`"
+        this._node = 'if'
+        this.message = "Must have single space before `then`"
     }
 
     check(node) {
         const then = node.tokens[3]
         //then is present, but space is missing or not one space
         if (then && (!then[0] || then[0].value !== ' ')) {
-            return location(then[0] || then[1])
+            return this.warning(then[0] || then[1])
         }
     }
 }
@@ -93,14 +111,14 @@ class then_space extends rule(4) {
 class no_empty_else extends rule(3) {
     constructor() {
         super()
-        this.node = 'if'
-        this._message = "`if` should not have empty `else`"
+        this._node = 'if'
+        this.message = "`if` should not have empty `else`"
     }
 
     check(node) {
         if (node.tokens[6] &&
             node.tokens[6][1].length === 1) {
-            return location(node.tokens[6][0])
+            return this.warning(node.tokens[6][0])
         }
     }
 }
@@ -108,8 +126,8 @@ class no_empty_else extends rule(3) {
 class if_parentheses extends rule(3) {
     constructor() {
         super()
-        this.node = 'if'
-        this._message = "`if` condition should not be enclosed in parentheses"
+        this._node = 'if'
+        this.message = "`if` condition should not be enclosed in parentheses"
     }
 
     check(node) {
@@ -117,7 +135,7 @@ class if_parentheses extends rule(3) {
         let last_token = node.tokens[2][4] || {}
         if (first_token.value === '(' &&
             last_token.value === ')') {
-            return location(first_token)
+            return this.warning(first_token)
         }
     }
 }
@@ -127,14 +145,14 @@ class if_parentheses extends rule(3) {
 class return_type extends rule(4) {
     constructor() {
         super()
-        this.node = 'function'
-        this._message = "functions returning values should have return type"
+        this._node = 'function'
+        this.message = "functions returning values should have return type"
     }
 
     check(node) {
         for (const [s] of statements(node)) {
             if (s.node == 'return' && s.val) {
-                return location(node.tokens[0])
+                return this.warning(node.tokens[0])
             }
         }
     }
@@ -143,13 +161,13 @@ class return_type extends rule(4) {
 class function_type extends rule(3) {
     constructor() {
         super()
-        this.node = 'function'
-        this._message = "functions must declare return type"
+        this._node = 'function'
+        this.message = "functions must declare return type"
     }
 
     check(node) {
         if (!node.return) {
-            return location(node.tokens[0])
+            return this.warning(node.tokens[0])
         }
     }
 }
@@ -157,13 +175,141 @@ class function_type extends rule(3) {
 class sub_with_return extends rule(3) {
     constructor() {
         super()
-        this.node = 'sub'
-        this._message = `sub with return type`
+        this._node = 'sub'
+        this.message = `sub with return type`
     }
 
     check(node) {
         if (node.return) {
-            return location(node.tokens[0])
+            return this.warning(node.tokens[0])
+        }
+    }
+}
+
+class keyword_formatting extends rule(4) {
+    constructor() {
+        super()
+        this.message = ``
+        this.case = 'lower'    // 'lower', allcap', 'pascal', 'any'
+        this.space = 'single'  // 'single, 'no', 'some', 'optional'
+        this.keywords = {}
+    }
+
+    check(node) {
+        switch (node.node) {
+            case 'lib':
+            case 'dim':
+            case 'return':
+            case 'print':
+                return deNull(this.checkKeyword(node.tokens[0]))
+            case 'function':
+            case 'sub':
+                return deNull([
+                    ...this.checkKeyword(node.tokens[0]),
+                    ...this.checkKeyword(node.tokens[node.tokens.length - 1])
+                ])
+            case 'param':
+                return deNull(this.checkKeyword(nodeAt(node.tokens, 2, 1)))
+            case 'if':
+                return deNull([
+                    ...this.checkKeyword(node.tokens[0]),
+                    ...this.checkKeyword(nodeAt(node.tokens, 3, 1)),
+                    ...this.checkKeyword(nodeAt(node.tokens, 6, 0)),
+                    ...this.checkKeyword(node.tokens[7])
+                ])
+            case 'for':
+                const isNext = node.tokens[13][0].value.toLowerCase() == 'next'
+                return deNull([
+                    ...this.checkKeyword(node.tokens[0]),
+                    ...this.checkKeyword(node.tokens[8]),
+                    ...this.checkKeyword(nodeAt(node.tokens, 11, 1)),
+                    ...(isNext ?
+                        this.checkKeyword(node.tokens[13][0]) :
+                        this.checkKeyword(node.tokens[13]))
+                ])
+            case 'foreach':
+                return deNull([
+                    ...this.checkKeyword(node.tokens[0]),
+                    ...this.checkKeyword(node.tokens[4]),
+                    ...this.checkKeyword(node.tokens[8])
+                ])
+            case 'while':
+                return deNull([
+                    ...this.checkKeyword(node.tokens[0]),
+                    ...this.checkKeyword(node.tokens[4])
+                ])
+            case 'uop':
+                if (node.tokens[0].value === '(') {
+                    return deNull(this.checkKeyword(node.tokens[2][0]))
+                } else {
+                    return deNull(this.checkKeyword(node.tokens[0]))
+                }
+            case 'bop':
+                if (node.tokens[0].value === '(') {
+                    return deNull(this.checkKeyword(node.tokens[2][2]))
+                } else {
+                    return deNull(this.checkKeyword(node.tokens[2]))
+                }
+            case 'exitfor':
+            case 'exitwhile':
+            case 'stop':
+            case 'end':
+                return deNull(this.checkKeyword(node.token))
+        }
+    }
+
+    checkKeyword(keywordTokens) {
+        if (!keywordTokens) return []
+
+        let canHaveSpace = false
+        if (Array.isArray(keywordTokens) && keywordTokens.length === 1) {
+            keywordTokens = keywordTokens[0]
+            canHaveSpace = true
+        }
+        if (Array.isArray(keywordTokens)) {
+            const key = keywordTokens[0].value + keywordTokens[2].value
+            const value = keywordTokens.map(_ => _.text).join('')
+            const lookup = this.keywords[key]
+            if (lookup) {
+                if (lookup !== value) {
+                    return [this.warning(keywordTokens, `keyword ${value} should be ${lookup}`)]
+                } else {
+                    return []
+                }
+            }
+            if (this.space === 'no') {
+                return [this.warning(keywordTokens, `keyword ${value} should not have a space`)]
+            }
+            if (this.space === 'single' && keywordTokens[1].value !== ' ') {
+                return [this.warning(keywordTokens[1], `keyword ${value} should have a single space`)]
+            }
+            return [this.checkCase(keywordTokens[0]),
+                    this.checkCase(keywordTokens[2])]
+        } else {
+            const value = keywordTokens.text
+            const lookup = this.keywords[keywordTokens.value]
+            if (lookup) {
+                if (lookup !== value) {
+                    return [this.warning(keywordTokens, `keyword ${value} should be ${lookup}`)]
+                } else {
+                    return []
+                }
+            }
+            if (canHaveSpace && (this.space === 'single' || this.space === 'some')) {
+                return [this.warning(keywordTokens, `keyword ${value} should have a space`)]
+            }
+            return [this.checkCase(keywordTokens)]
+        }
+    }
+
+    checkCase(token) {
+        const value = token.text
+        if (this.case === 'lower' && value !== value.toLowerCase()) {
+            return this.warning(token, `keyword ${value} should be in lower case`)
+        } else if (this.case === 'allcap' && value !== value.toUpperCase()) {
+            return this.warning(token, `keyword ${value} should be in upper case`)
+        } else if (this.case === 'pascal' && value != toPascalCase(value)) {
+            return this.warning(token, `keyword ${value} should start with upper case letter`)
         }
     }
 }
@@ -175,21 +321,42 @@ const classRules = [
     no_empty_else, if_parentheses,
     return_type,
     function_type,
-    sub_with_return
+    sub_with_return,
+    keyword_formatting
 ]
 
 module.exports = (config, level) => {
-    level = level || 3
-    if (!config || !config.include) {
-        return defaultRules(level)
+    if (!config || !config.include || !config.custom) {
+        return defaultRules(level || 3)
     }
     
-    return selectRules(config.include, level)
+    return selectRules(config, level || 4)
 }
 
-function selectRules(names, level) {
-    return classRules.filter(_ => _.level <= level && names.includes(_.name))
-        .map(_ => Reflect.construct(_, []))
+function selectRules(config, level) {
+    let rulesConfig = {}
+    for (const r of config.include || []) {
+        rulesConfig[r] = {}
+    }
+
+    for (const r in config.custom || {}) {
+        rulesConfig[r] = config.custom[r]
+    }
+
+    return prepareRules(rulesConfig, level)
+}
+
+function prepareRules(rulesConfig, level) {
+    let rules = []
+    for (const key in rulesConfig) {
+        const cls = classRules.find(_ => _.name === key)
+        if (cls && cls.level <= level) {
+            const instance = cls.createWithProps(rulesConfig[key])
+            rules.push(instance)
+        }
+    }
+
+    return rules
 }
 
 function defaultRules(level) {
@@ -248,4 +415,27 @@ function sameAs(a, b) {
         }
     }
     return true
+}
+
+function toPascalCase(str) {
+    if (str.length < 1) return str
+    str = str.toLowerCase()
+    return str[0].toUpperCase() + str.substring(1)
+}
+
+function deNull(array) {
+    return array.filter(_=>_)
+}
+
+function nodeAt(node, ...ixs) {
+    if (!node) return 
+    for (let i of ixs) {
+        if (node[i]) {
+            node = node[i]
+        } else {
+            return
+        }
+    }
+
+    return node
 }

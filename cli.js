@@ -110,8 +110,8 @@ function showErrors(errors, file) {
 function showWarnings(warnings) {
     if (args.message == 'all') {
         warnings.forEach( function (warning) {
-            if (warning.s <= parseInt(args.warning)) {
-                console.log(color.yellowBright('  Warning: ') + warning.msg + ' @' + warning.loc)
+            if (warning.level <= parseInt(args.warning)) {
+                console.log(color.yellowBright('  Warning: ') + warning.message + ' @' + warning.loc)
             }
         })
     }

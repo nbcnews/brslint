@@ -28,11 +28,15 @@ function traverse(node, callback, ctx) {
 function traverseRule(node, rule, warnings) {
     if (!node) return
 
-    if (node.node === rule.node) {
-        let l = rule.check(node)
-        if (l) warnings.push(
-            { s: rule.level, msg: rule.message, loc: l }
-        )
+    if (!rule.node || node.node === rule.node) {
+        let warn = rule.check(node)
+        if (warn) {
+            if (Array.isArray(warn)) {
+                warnings.push(...warn)
+            } else {
+                warnings.push(warn)
+            }
+        } 
     }
 
     for (const key in node) {
@@ -73,7 +77,7 @@ function unassignedVar(node, vars) {
     }
     if (node.node == 'id' && (node.accessors == null || node.accessors[0].node != 'call')) {
         if (vars.indexOf(node.val.toLowerCase()) < 0 && globals.indexOf(node.val) < 0) {
-            warnings.push({ msg: 'Undefined variable \'' + node.val + '\'', loc: node.li.line+','+node.li.col, s: 1 })
+            warnings.push({ message: 'Undefined variable \'' + node.val + '\'', loc: node.li.line+','+node.li.col, level: 1 })
             return
         }
     }

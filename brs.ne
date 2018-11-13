@@ -158,9 +158,11 @@ for_loop ->
     statement_list end_for                                                      {% ast.for %}
 end_for -> "end" __ "for" | "endfor" | "next" (__ IDENTIFIER):?
 # `endfor :` <- results in error, `next :` is ok :(
+
 for_each ->
-    "for" _ "each" __ IDENTIFIER __ "in" _ rval statement_list end_for_each     {% ast.foreach %}
-end_for_each -> "end" __ "for" | "endfor" | "next"
+    ("for" __ "each" | "foreach") __ IDENTIFIER __ 
+    "in" _ rval statement_list end_for_each                                     {% ast.foreach %}
+end_for_each -> "end" __ "for" | "endfor" | "next" {% id %}
 
 while_loop ->
     "while" _ EXPR statement_list ("end" __ "while" | "endwhile")               {% ast.while %}
@@ -180,7 +182,9 @@ goto_label -> IDENTIFIER _ ":"
 
 goto_statement -> "goto" __ IDENTIFIER
 
-print_statement -> ("print" | "?") print_items                                  {% ast.print %}
+print_statement -> print print_items                                            {% ast.print %}
+print -> "print"                                                                {% id %}
+       | "?"                                                                    {% id %}
 print_items -> 
     psep:*                                                                      {% id %} 
   | psep:* EXPR (_ PEXPR | pxsp EXPR):* psep:*                                  {% ast.print_items %}
