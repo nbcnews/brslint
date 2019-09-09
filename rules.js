@@ -78,7 +78,7 @@ class no_empty_then extends rule(3) {
     }
 }
 
-class then extends rule(4) {
+class must_have_then extends rule(4) {
     constructor() {
         super()
         this._node = 'if'
@@ -183,6 +183,103 @@ class sub_with_return extends rule(3) {
         if (node.return) {
             return this.warning(node.tokens[0])
         }
+    }
+}
+
+class object_formatting extends rule(4) {
+    constructor() {
+        super()
+        this._node = 'object'
+        this.message = ``
+        this.spaces_after_colon = 1
+        this.spaces_before_colon = 0
+        this.trailing_commas = 'no' // 'no', 'required'
+        this.maxOneLine = 4
+        this.key_in_quotes = 'consistent' // 'allways', 'consistent', 'any'
+    }
+
+    check(node) {
+        let warnings = []
+        let quotedKeys = 0
+
+        const newlineCount = (token) => {
+            if (token.type != 'NL') return 0
+            return (token.value.match(/\n/g) || []).length
+        }
+        const spaceCount = (token) => {
+            if (token.type != 'ws') return 0
+            return token.value.length
+        }
+
+        const multiline = node.tokens.findIndex(item => newlineCount(item) > 0) > 0
+        const secondToken = node.tokens[1]
+        const secondToLast = node.tokens[node.tokens.length - 2]
+
+        if (multiline) {
+            if (newlineCount(secondToken) == 0) {
+                warnings.push(this.warning(secondToken, '`{` must be on its own line'))
+            }
+            if (newlineCount(secondToLast) == 0) {
+                warnings.push(this.warning(secondToLast, '`}` must be on new line'))
+            }
+        } else if (node.properties.length > 0) {
+            if (spaceCount(secondToken) != 1) {
+                warnings.push(this.warning(secondToken, '`{` must be followed by single space'))
+            }
+            if (spaceCount(secondToLast) != 1) {
+                warnings.push(this.warning(secondToLast, '`}` must be preceded by single space'))
+            }
+        }
+
+        if (multiline) {
+            let zip = node.tokens
+                .map((e, i) => [e, node.tokens[i + 1]])
+                .filter(e => e[0].value == ',')
+
+            for (const item of zip) {
+                if (item[1].type == 'ws') {
+                    warnings.push(this.warning(item[0], 'one property per line'))
+                } else if (this.trailing_commas == 'no') {
+                    warnings.push(this.warning(item[0], 'no trailing commas in object literals'))
+                }
+            }
+        } else if (this.maxOneLine < node.properties.length) {
+            warnings.push(this.warning(node.tokens, `object literals with more than ${this.maxOneLine} properties should be on multiple lines`))
+        }
+
+        for (const property of node.properties) {
+            const keyInQuotes = /^".*"$/.test(property.name)
+            if (keyInQuotes) quotedKeys += 1
+            if (this.key_in_quotes == 'allways' && !keyInQuotes) {
+                warnings.push(this.warning(property.value.token, 'key must be in quotes'))
+            }
+
+            const colonIndex = property.tokens.findIndex(item => item.value == ':')
+            const tokenBeforeColon = property.tokens[colonIndex - 1]
+
+            if (this.spaces_before_colon == 0 && tokenBeforeColon.type == 'ws') {
+                warnings.push(this.warning(tokenBeforeColon, 'spaces not allowed before `:`'))
+            }
+            if (this.spaces_before_colon > 0 && spaceCount(tokenBeforeColon) != this.spaces_before_colon) {
+                warnings.push(this.warning(tokenBeforeColon, `expecting ${this.spaces_before_colon} spaces before \`:\``))
+            }
+
+            const tokenAfterColon = property.tokens[colonIndex + 1]
+            if (this.spaces_after_colon == 0 && tokenAfterColon.type != 'ws') {
+                warnings.push(this.warning(tokenAfterColon, 'spaces not allowed after `:`'))
+            }
+            if (this.spaces_after_colon > 0 && spaceCount(tokenAfterColon) != this.spaces_after_colon) {
+                warnings.push(this.warning(tokenAfterColon, `expecting ${this.spaces_after_colon} spaces after \`:\``))
+            }
+        }
+
+        if (this.key_in_quotes == 'consistent') {
+            if (quotedKeys != node.properties.length && quotedKeys != 0) {
+                warnings.push(this.warning(node.tokens, `all keys should be in quotes or without quotes`))
+            }
+        }
+
+        return warnings
     }
 }
 
@@ -317,12 +414,13 @@ class keyword_formatting extends rule(4) {
 const classRules = [
     function_too_big,
     end_if,
-    no_empty_then, then, then_space,
+    no_empty_then, must_have_then, then_space,
     no_empty_else, if_parentheses,
     return_type,
     function_type,
     sub_with_return,
-    keyword_formatting
+    keyword_formatting,
+    object_formatting
 ]
 
 module.exports = (config, level) => {

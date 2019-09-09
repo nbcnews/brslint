@@ -401,11 +401,12 @@ function end(t) {
 }
 
 function object(t) {
-    if (t.length === 3) return { node: 'object', properties: [] }
+    if (t.length === 3) return { node: 'object', properties: [], tokens: xtok(flat(t).filter(_=>_)) }
     
     return {
         node: 'object',
-        properties: t[2].map(e => e[0]).concat([t[3]])
+        properties: t[2].map(e => e[0]).concat([t[3]]),
+        tokens: xtok(flat(t).filter(_=>_))
     }
 }
 function array(t) {
@@ -420,7 +421,8 @@ function propdef(t) {
     return {
         node: 'property',
         name: t[0].name,
-        value: t[4]
+        value: t[4],
+        tokens: xtok(flat(t).filter(_=>_))
     }
 }
 
