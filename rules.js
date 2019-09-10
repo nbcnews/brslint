@@ -195,7 +195,7 @@ class object_formatting extends rule(4) {
         this.spaces_before_colon = 0
         this.trailing_commas = 'no' // 'no', 'required'
         this.maxOneLine = 4
-        this.key_in_quotes = 'consistent' // 'allways', 'consistent', 'any'
+        this.key_in_quotes = 'consistent' // 'required', 'consistent'
     }
 
     check(node) {
@@ -250,7 +250,7 @@ class object_formatting extends rule(4) {
         for (const property of node.properties) {
             const keyInQuotes = /^".*"$/.test(property.name)
             if (keyInQuotes) quotedKeys += 1
-            if (this.key_in_quotes == 'allways' && !keyInQuotes) {
+            if (this.key_in_quotes == 'required' && !keyInQuotes) {
                 warnings.push(this.warning(property.value.token, 'key must be in quotes'))
             }
 
