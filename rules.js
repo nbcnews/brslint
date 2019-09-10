@@ -194,7 +194,7 @@ class object_formatting extends rule(4) {
         this.spaces_after_colon = 1
         this.spaces_before_colon = 0
         this.trailing_commas = 'no' // 'no', 'required'
-        this.maxOneLine = 4
+        this.max_properties = 4
         this.key_in_quotes = 'consistent' // 'required', 'consistent'
     }
 
@@ -208,7 +208,7 @@ class object_formatting extends rule(4) {
         }
         const spaceCount = (token) => {
             if (token.type != 'ws') return 0
-            return token.value.length
+            return (token.value.match(/ /g) || []).length
         }
 
         const multiline = node.tokens.findIndex(item => newlineCount(item) > 0) > 0
@@ -232,19 +232,19 @@ class object_formatting extends rule(4) {
         }
 
         if (multiline) {
-            let zip = node.tokens
+            let pairs = node.tokens
                 .map((e, i) => [e, node.tokens[i + 1]])
                 .filter(e => e[0].value == ',')
 
-            for (const item of zip) {
+            for (const item of pairs) {
                 if (item[1].type == 'ws') {
                     warnings.push(this.warning(item[0], 'one property per line'))
                 } else if (this.trailing_commas == 'no') {
                     warnings.push(this.warning(item[0], 'no trailing commas in object literals'))
                 }
             }
-        } else if (this.maxOneLine < node.properties.length) {
-            warnings.push(this.warning(node.tokens, `object literals with more than ${this.maxOneLine} properties should be on multiple lines`))
+        } else if (node.properties.length > this.max_properties) {
+            warnings.push(this.warning(node.tokens, `object literals with more than ${this.max_properties} properties should be on multiple lines`))
         }
 
         for (const property of node.properties) {
