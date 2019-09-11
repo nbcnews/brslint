@@ -24,8 +24,7 @@ const lint = require('./brslint.js'),
 
 main()
 
-function main()
-{
+function main() {
     if (args.debug) {
         console.log(args)
     }
@@ -34,21 +33,21 @@ function main()
     let totalErrors = 0
     let allFunctions = []
 
-    const config = (args._[0])?
+    const config = (args._[0]) ?
         defaultConfig(args) :
         readconfig(args)
 
-    var files = readdir(config, '.brs', args.recursive)
+    let files = readdir(config, '.brs', args.recursive)
 
     if (files.length === 0) {
         console.log(color.yellow('Warning') + ": Couldn't find any BrightScript files to lint")
         process.exit(0)
     }
 
-    files.forEach(function (file) {
-        var input = fs.readFileSync(file, 'utf8')
-        var result = lint.parse(input, {preprocessor: args.preprocessor, debug: args.debug, ast: args.ast})
-        var name = pth.basename(file)
+    files.forEach(file => {
+        const input = fs.readFileSync(file, 'utf8')
+        const result = lint.parse(input, { preprocessor: args.preprocessor, debug: args.debug, ast: args.ast })
+        const name = pth.basename(file)
 
         if (args.message !== 'silent') {
             if (args.message !== 'errors' || result.errors.length > 0) {
@@ -61,11 +60,11 @@ function main()
 
         if (result.ast) {
             if (!args.p) {
-                const globalFnNames = result.ast.functions.map(f => f.name)
-                result.ast.functions.forEach(function (f) {
-                    f["file"] = file
-                    allFunctions.push(f)
-                    showWarnings(lint.style(f, globalFnNames))
+                const globalFnNames = result.ast.functions.map(func => func.name)
+                result.ast.functions.forEach(func => {
+                    func.file = file
+                    allFunctions.push(func)
+                    showWarnings(lint.style(func, globalFnNames))
                 })
                 
                 const rules = require('./rules')(config.rules, parseInt(args.warning))
@@ -92,17 +91,14 @@ function main()
             console.log('\nFinished with ' + totalErrors + color.redBright(' errors') + ' in ' + files.length + ' files')
         }
         process.exit(1)
-    }
-    else {
-        if (args.message !== 'silent') {
-            console.log("\nProcessed %d files, %d functions in %dms  =^..^=\n", files.length, allFunctions.length, processingTime)
-        }
+    } else if (args.message !== 'silent') {
+        console.log("\nProcessed %d files, %d functions in %dms  =^..^=\n", files.length, allFunctions.length, processingTime)
     }
 }
 
 
 function showErrors(errors, file) {
-    errors.forEach( function (error) {
+    errors.forEach(error => {
         console.log(color.redBright('  Error: ') + error + (args.format == 'robot' ? ' ' + file : ''))
     })
 }
@@ -160,8 +156,8 @@ function readdir(config, ext, recursive) {
 }
 
 function pathSort(a, b) {
-    var ad = a.split(pth.sep).length
-    var bd = b.split(pth.sep).length
+    const ad = a.split(pth.sep).length
+    const bd = b.split(pth.sep).length
     if (ad > bd)
         return 1
     else if (ad < bd)
@@ -202,7 +198,7 @@ function defaultConfig(args) {
             include: [args._[0] || '.'],
             exclude: []
         },
-        recursive: args.recursive || true,
+        recursive: args.recursive || true
     }
 
     return config
