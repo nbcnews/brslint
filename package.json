@@ -1,13 +1,13 @@
 {
   "name": "brslint",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "BrightScript Lint",
   "preferGlobal": true,
   "bin": {
     "brslint": "./cli.js"
   },
   "engines": {
-    "node": ">=6.4.0"
+    "node": ">=8.0.0"
   },
   "files": [
     "ast.js",
