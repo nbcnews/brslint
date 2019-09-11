@@ -186,6 +186,22 @@ class sub_with_return extends rule(3) {
     }
 }
 
+class yoda_condition extends rule(3) {
+    constructor() {
+        super()
+        this._node = 'bop'
+        this.message = `in conditional expression constant should be on the right`
+    }
+
+    check(node) {
+        const compareOp = /^[>=<]{1,2}$/.test(node.op)
+        const leftConst = /const|number|string/.test(node.left.node)
+        if (compareOp && leftConst) {
+            return this.warning(node.tokens)
+        }
+    }
+}
+
 class object_formatting extends rule(4) {
     constructor() {
         super()
@@ -419,6 +435,7 @@ const classRules = [
     return_type,
     function_type,
     sub_with_return,
+    yoda_condition,
     keyword_formatting,
     object_formatting
 ]
