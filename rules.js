@@ -194,7 +194,7 @@ class yoda_condition extends rule(3) {
     }
 
     check(node) {
-        const compareOp = /^[>=<]{1,2}$/.test(node.op)
+        const compareOp = /^(?:>|=|<|<=|>=|<>)$/.test(node.op)
         const leftConst = /const|number|string/.test(node.left.node)
         if (compareOp && leftConst) {
             return this.warning(node.tokens)
