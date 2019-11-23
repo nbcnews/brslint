@@ -440,7 +440,7 @@ function print_items(t) {
     return items.concat(print_separators(t[3]))
 }
 function print_separators(t) {
-    return t.filter(f=>f).map(e => {
+    return (t||[]).filter(f=>f).map(e => {
         return {
             node: 'separator',
             val: e.text,

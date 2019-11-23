@@ -1,0 +1,11 @@
+{
+    "functions": {
+        "roku_ads": {
+            "node": "function",
+            "name": "roku_ads",
+            "params": [],
+            "return": "object",
+            "statements": []
+        }
+    }
+}

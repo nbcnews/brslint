@@ -1,6 +1,6 @@
 {
   "name": "brslint",
-  "version": "0.1.10",
+  "version": "0.2.0",
   "description": "BrightScript Lint",
   "preferGlobal": true,
   "bin": {
@@ -14,9 +14,12 @@
     "brs.js",
     "brslint.js",
     "cli.js",
+    "global.json",
     "pprint.js",
     "preprocessor.js",
     "rules.js",
+    "roku_ads.json",
+    "xmllint.js",
     "moo/moo.js"
   ],
   "repository": "https://github.com/nbcnews/brslint.git",
@@ -32,6 +35,7 @@
   "dependencies": {
     "cli-color": "^1.0.0",
     "minimist": "^1.2.0",
-    "nearley": "2.13.0"
+    "nearley": "2.13.0",
+    "xml2js": "^0.4.22"
   }
 }
