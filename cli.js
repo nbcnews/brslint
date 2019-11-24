@@ -131,12 +131,12 @@ function lintComponents(components, codeFiles) {
     resolveInheritedFunctions(components)
     lintComponentsXml(components)
 
-    const globalFunctions = require('./global.json')
+    const globalFunctions = new Map(Object.entries(require('./global.json')))
 
     for (const component of Object.values(components)) {
         if (!component) continue
 
-        for (const func of Object.values(component.functions)) {
+        for (const func of component.functions.values()) {
             const errors = lint.check(func, component.functions, globalFunctions)
             if (errors.length > 0) {
                 codeFiles[func.file].errors.push(...errors)
@@ -148,7 +148,7 @@ function lintComponents(components, codeFiles) {
 function lintComponentsXml(components) {
     for (const file of Object.keys(components)) {
         const componentEntry = components[file]
-        componentEntry.errors.push(... xlint.lint(componentEntry.component))
+        componentEntry.errors.push(... xlint.lint(componentEntry.component, componentEntry.functions))
     }
 }
 
@@ -168,25 +168,25 @@ function resolveComponentFunctions(components, codeFiles) {
         let asts = scriptPaths.map(path => [ast(path), path])
         if (asts.filter(a => !a[0]).length > 0) continue
 
-        const globalFunctions = require('./global.json')
-        let scopedFunctions = {}
+        const globalFunctions = new Map(Object.entries(require('./global.json')))
+        let scopedFunctions = new Map()
 
         for (const [ast, path] of asts) {
             for (const lib of ast.libs) {
                 if (lib.name.toLowerCase() === '"roku_ads.brs"') {
-                    Object.assign(scopedFunctions, require('./roku_ads.json').functions)
+                    scopedFunctions = new Map([...scopedFunctions, ...Object.entries(require('./roku_ads.json').functions)])
                 }
             }
 
             for (const func of ast.functions) {
                 const lookupName = func.name.toLowerCase()
-                if (scopedFunctions[lookupName]) {
+                if (scopedFunctions.has(lookupName)) {
                     codeFiles[path].errors.push({level: 1, message: 'Redefining function `' + func.name + '`', loc: func.tokens[0].line + ',' + func.tokens[0].col})
-                } else if (globalFunctions[lookupName]) {
+                } else if (globalFunctions.has(lookupName)) {
                     codeFiles[path].errors.push({level: 1, message: 'Redefining global function `' + func.name + '`', loc: func.tokens[0].line + ',' + func.tokens[0].col})
                 } else {
                     func.file = path
-                    scopedFunctions[lookupName] = func
+                    scopedFunctions.set(lookupName, func)
                 }
             }
         }
@@ -207,7 +207,7 @@ function copyFunctionsFromBase(components, componentEntry) {
     const baseEntry = Object.values(components).find(a => a.component.name.toLowerCase() == componentEntry.component.extends.toLowerCase())
     if (baseEntry && baseEntry.component) {
         copyFunctionsFromBase(components, baseEntry)
-        componentEntry.functions = Object.assign({}, baseEntry.functions, componentEntry.functions)
+        componentEntry.functions = new Map([...baseEntry.functions, ...componentEntry.functions])
     }
 }
 

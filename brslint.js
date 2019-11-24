@@ -57,9 +57,9 @@ function unassignedVar(node, vars) {
     const defineVar = (name, node) => {
         const lookupName = name.toLowerCase()
         // User defined functions collide with local variables, global functions do not
-        if (scoped[lookupName]) {
+        if (scoped.has(lookupName)) {
             const token = node.token || node.tokens[0]
-            warnings.push({ message: 'Name `' + name + '` is used by function in ' + scoped[lookupName].file, loc: token.line+','+token.col, level: 1 })
+            warnings.push({ message: 'Name `' + name + '` is used by function in ' + scoped.get(lookupName).file, loc: token.line+','+token.col, level: 1 })
         }
         vars.push(lookupName)
     }
@@ -86,7 +86,7 @@ function unassignedVar(node, vars) {
     }
     if (node.node == 'id') {
         const lookupName = node.val.toLowerCase()
-        if (vars.indexOf(lookupName) < 0 && !globals[lookupName] && !scoped[lookupName]) {
+        if (vars.indexOf(lookupName) < 0 && !globals.has(lookupName) && !scoped.has(lookupName)) {
             if (node.accessors && node.accessors[0].node == 'call') {
                 warnings.push({ message: 'Undefined function \'' + node.val + '\'', loc: node.li.line+','+node.li.col, level: 1 })
             } else {
@@ -94,7 +94,6 @@ function unassignedVar(node, vars) {
             }
         }
     }
-
 }
 
 module.exports = {
