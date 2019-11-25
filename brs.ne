@@ -23,7 +23,7 @@ let lexer = moo.compile({
             reserved: ['end','if','else','elseif','exit','not','and','or','return','function','sub','print']
         })
     },
-    number:     /\d+%|\d*\.?\d+(?:[ed][+-]?\d+)?[!#&]?|&h[0-9ABCDEF]+/,
+    number:     /\d+%|\d*\.?\d+(?:[edED][+-]?\d+)?[!#&]?|&h[0-9ABCDEFabcdef]+/,
     string:     /"(?:[^"\n\r]*(?:"")*)*"/,
     op:         /<>|<=|>=|<<|>>|\+=|-=|\*=|\/=|\\=|<<=|>>=/,
     othr:       /./
@@ -79,9 +79,9 @@ param_default -> _ "=" _ rval
 
 param_type -> _ "as" __ ptype                                                   
 
-ptype -> type {% u %} | "function" {% id %}
+ptype -> type {% u %}
 rtype -> type {% u %} | "void"     {% id %}
-type -> "boolean" | "integer" | "longinteger" | "float" | "double" | "string" | "object" | "dynamic"
+type -> "boolean" | "integer" | "longinteger" | "float" | "double" | "string" | "object" | "dynamic" | "function"
 # "Interface" is not allowed in param or return
 
 statement_list -> 
@@ -187,7 +187,7 @@ print -> "print"                                                                
        | "?"                                                                    {% id %}
 print_items -> 
     psep:*                                                                      {% id %} 
-  | psep:* EXPR (_ PEXPR | pxsp EXPR):* psep:*                                  {% ast.print_items %}
+  | psep:* EXPR (_ PEXPR | pxsp EXPR):* (psep:* ppp):?                          {% ast.print_items %}
 psep-> ";" {%id%} | "," {%id%} | __ {%id%}
 ppp-> ";" {%id%} | "," {%id%}
 pxsp-> _ ppp psep:*                                                             {% flat %}
@@ -208,13 +208,16 @@ access ->
 |   _ "[" _ EXPR (_ "," _ EXPR):* _ "]"                                         {% ast.index %}
 call -> _ "(" _ rval (_ "," _ rval):* _ ")"                                     {% ast.call %}
       | _ "(" _ ")"                                                             {% ast.call %}        
-xmlattr -> _ "@" _ IDENTIFIER                                                   {% ast.xmlattr %}
+xmlattr -> _ "@" _ ATTR_NAME                                                    {% ast.xmlattr %}
 
 PROP_NAME ->
     IDENTIFIER          {% ast.name %}
 |   RESERVED            {% ast.name %}
 |   constant            {% ast.name %}
 |   string              {% ast.name %}
+ATTR_NAME ->
+    IDENTIFIER          {% ast.name %}
+|   RESERVED            {% ast.name %}          
 access_or_call ->
     access              {% id %}
 |   call                {% id %}

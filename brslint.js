@@ -4,7 +4,7 @@ const nearley = require("nearley")
 const grammar = require("./brs")
 const preprocessor = require("./preprocessor")
 
-let errors = [], warnings = [], globals = []
+let warnings = [], globals = [], scoped = {}
 
 function traverse(node, callback, ctx) {
     if (!node) return
@@ -54,46 +54,58 @@ function traverseRule(node, rule, warnings) {
 }
 
 function unassignedVar(node, vars) {
+    const defineVar = (name, node) => {
+        const lookupName = name.toLowerCase()
+        // User defined functions collide with local variables, global functions do not
+        if (scoped.has(lookupName)) {
+            const token = node.token || node.tokens[0]
+            warnings.push({ message: 'Name `' + name + '` is used by function in ' + scoped.get(lookupName).file, loc: token.line+','+token.col, level: 1 })
+        }
+        vars.push(lookupName)
+    }
 
     if (node.node === 'function' || node.node === 'sub') {
         return [ 'm', 'true', 'false' ]
     }
     if (node.node == 'param') {
-        vars.push(node.name.toLowerCase())
+        defineVar(node.name, node)
     }
     if (node.node == '=' && node.lval) {
         if (!node.lval.accessors) {
-            vars.push(node.lval.val.toLowerCase())
+            defineVar(node.lval.val, node.lval)
         }
     }
     if (node.node == 'dim') {
-        vars.push(node.name.val.toLowerCase())
+        defineVar(node.name.val, node.name)
     }
     if (node.node == 'foreach') {
-        vars.push(node.var.val.toLowerCase())
+        defineVar(node.var.val, node.var)
     }
     if (node.node == 'for') {
-        vars.push(node.var.val.toLowerCase())
+        defineVar(node.var.val, node.var)
     }
-    if (node.node == 'id' && (node.accessors == null || node.accessors[0].node != 'call')) {
-        if (vars.indexOf(node.val.toLowerCase()) < 0 && globals.indexOf(node.val) < 0) {
-            warnings.push({ message: 'Undefined variable \'' + node.val + '\'', loc: node.li.line+','+node.li.col, level: 1 })
-            return
+    if (node.node == 'id') {
+        const lookupName = node.val.toLowerCase()
+        if (vars.indexOf(lookupName) < 0 && !globals.has(lookupName) && !scoped.has(lookupName)) {
+            if (node.accessors && node.accessors[0].node == 'call') {
+                warnings.push({ message: 'Undefined function \'' + node.val + '\'', loc: node.li.line+','+node.li.col, level: 1 })
+            } else {
+                warnings.push({ message: 'Undefined variable \'' + node.val + '\'', loc: node.li.line+','+node.li.col, level: 1 })
+            }
         }
     }
 }
 
-let parser
 module.exports = {
     parse: function (input, options) {
         options = options || {}
-        errors = []
+        let errors = []
         try {
             if (options.preprocessor) {
                 input = preprocessor(input, options.consts)
             }
 
-            parser = new nearley.Parser(nearley.Grammar.fromCompiled(grammar),{ keepHistory: options.debug })
+            let parser = new nearley.Parser(nearley.Grammar.fromCompiled(grammar),{ keepHistory: options.debug })
             parser.feed(input)
 
             if (parser.results.length > 1) {
@@ -103,27 +115,32 @@ module.exports = {
             if (options.ast != null) {
                 console.log(JSON.stringify(parser.results[0]))
             }
+
+            return { ast: parser.results[0], errors: errors }
         }
         catch (x) {
-            errors.push(x.message)
-            return { success: false, errors: errors }
+            const regex = / at line (\d+) col (\d+):\n\n\s*/i
+            let loc = x.token.line + ',' + x.token.col
+            let message = x.message.replace(regex, ': `')
+            message = message.replace(/\n\s*\^\n/, '`. ').replace(/\n/, '')
+            errors.push({ level: 0, message: message, loc: loc})
+            return { errors: errors }
         }
-
-        return { success: true, ast: parser.results[0], errors: errors }
     },
-    style: function (f, g) {
+
+    check: function (ast, scopedFunctions, globalFunctions) {
         warnings = []
-        globals = g
-        traverse(f, unassignedVar)
+        globals = globalFunctions
+        scoped = scopedFunctions
+        traverse(ast, unassignedVar)
         return warnings
     },
 
-    lint: (ast, g, rules) => {
-        let w = []
+    lint: (ast, rules) => {
+        let warnings = []
         for (let rule of rules) {
-            traverseRule(ast, rule, w)
+            traverseRule(ast, rule, warnings)
         }
-        return w
+        return warnings
     }
 }
-
