@@ -220,9 +220,8 @@ function scriptPath(path, base) {
 }
 
 function lintGlobalScope(codeFiles) {
-    // replace with maps
-    const globalFunctions = Object.assign(Object.create(null), require('./global.json'))
-    let scopedFunctions = Object.create(null)
+    const globalFunctions = new Map(Object.entries(require('./global.json')))
+    let scopedFunctions = new Map()
     for (const file of Object.keys(codeFiles)) {
         if (!/^source\//i.test(file)) continue
 
@@ -231,25 +230,25 @@ function lintGlobalScope(codeFiles) {
         if (entry.ast) {
             for (const lib of entry.ast.libs) {
                 if (lib.name.toLowerCase() === '"roku_ads.brs"') {
-                    Object.assign(scopedFunctions, require('./roku_ads.json').functions)
+                    scopedFunctions = new Map([...scopedFunctions, ...Object.entries(require('./roku_ads.json').functions)])
                 }
             }
 
             for (const func of entry.ast.functions) {
                 const lookupName = func.name.toLowerCase()
-                if (scopedFunctions[lookupName]) {
+                if (scopedFunctions.has(lookupName)) {
                     codeFiles[file].errors.push({level: 1, message: 'Redefining function `' + func.name + '`', loc: func.tokens[0].line + ',' + func.tokens[0].col})
-                } else if (globalFunctions[lookupName]) {
+                } else if (globalFunctions.has(lookupName)) {
                     codeFiles[file].errors.push({level: 1, message: 'Redefining global function `' + func.name + '`', loc: func.tokens[0].line + ',' + func.tokens[0].col})
                 } else {
                     func.file = file
-                    scopedFunctions[lookupName] = func
+                    scopedFunctions.set(lookupName, func)
                 }
             }
         }
     }
 
-    for (const func of Object.values(scopedFunctions)) {
+    for (const func of scopedFunctions.values()) {
         const errors = lint.check(func, scopedFunctions, globalFunctions)
         if (errors.length > 0) {
             codeFiles[func.file].errors.push(...errors)
