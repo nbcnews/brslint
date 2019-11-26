@@ -87,10 +87,14 @@ function parseBrightScriptFiles(files, component) {
             const result = lint.parse(input, { preprocessor: args.preprocessor, debug: args.debug, ast: args.ast })
             parsedFiles[file] = result
         } catch (error) {
-            if (component) {
-                component.errors.push({ level: 0, message: 'Unable to read ' + file, loc:'1' })
+            if (error.code === 'ENOENT' || error.code === 'EACCES') {
+                if (component) {
+                    component.errors.push({ level: 0, message: `Unable to read (${error.code}) ` + file, loc:'1' })
+                } else {
+                    parsedFiles[file] = { errors: [{ level: 0, message: `Unable to read (${error.code}) ` + file, loc:'1' }] }
+                }
             } else {
-                parsedFiles[file] = { errors: [{ level: 0, message: 'Unable to read ' + file, loc:'1' }] }
+                console.log(error)
             }
         }
     }
@@ -166,7 +170,10 @@ function resolveComponentFunctions(components, codeFiles) {
         if (codeFiles[file]) scriptPaths.push(file)
         const ast = a => codeFiles[a] ? codeFiles[a].ast : null
         let asts = scriptPaths.map(path => [ast(path), path])
-        if (asts.filter(a => !a[0]).length > 0) continue
+        if (asts.filter(a => !a[0]).length > 0) {
+            componentEntry.functions = new Map()
+            continue
+        }
 
         const globalFunctions = new Map(Object.entries(require('./global.json')))
         let scopedFunctions = new Map()
@@ -224,7 +231,6 @@ function lintGlobalScope(codeFiles) {
     let scopedFunctions = new Map()
     for (const file of Object.keys(codeFiles)) {
         if (!/^source\//i.test(file)) continue
-
         const entry = codeFiles[file]
 
         if (entry.ast) {

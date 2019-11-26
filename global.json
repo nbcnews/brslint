@@ -1,4 +1,7 @@
 {
+    "pos" : "Print Functions",
+    "tab" : "Print Functions",
+    
     "abs" : "Math Functions",
     "atn" : "Math Functions",
     "cdbl" : "Math Functions",
@@ -39,6 +42,7 @@
     "eval" : "Runtime Functions",
     "getlastruncompileerror" : "Runtime Functions",
     "getlastrunruntimeerror" : "Runtime Functions",
+    "objfun": "Runtime Functions",
 
     "formatjson": "Utility Functions",
     "parsejson": "Utility Functions",

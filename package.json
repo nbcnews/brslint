@@ -1,6 +1,6 @@
 {
   "name": "brslint",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "BrightScript Lint",
   "preferGlobal": true,
   "bin": {
@@ -35,7 +35,7 @@
   "dependencies": {
     "cli-color": "^1.0.0",
     "minimist": "^1.2.0",
-    "nearley": "2.13.0",
+    "nearley": "2.16.0",
     "xml2js": "^0.4.22"
   }
 }
