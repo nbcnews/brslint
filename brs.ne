@@ -3,6 +3,7 @@
 # False, For, Function, GetGlobalAA, GetLastRunCompileError, GetLastRunRunTimeError, Goto, If, Invalid, Let, LINE_NUM,
 # Next, Not, ObjFun, Or, Pos, Print, Rem, Return, Run, Step, Stop, Sub, Tab, Then, To, True, Type, While
 
+# lexer clenup regex: \(lexer\.has\(".*?"\) \? (\{.*?\}).*?\)
 
 @{%
 const moo = require('./moo/moo')
@@ -19,12 +20,19 @@ let lexer = moo.compile({
     ws:         { match: /[ \t]+/ },
     IDENTIFIER: { match: /[a-zA-Z_][\w]*[$%!#]?/, value: x=>x.toLowerCase(),
         type: caseInsensitiveKeywords({
-            constant: ['true', 'false', 'invalid'],
-            reserved: ['end','if','else','elseif','exit','not','and','or','return','function','sub','print']
+            true: ['true'], false: ['false'], invalid: ['invalid'],
+            and: ['and'], dim: ['dim'], each: ['each'], else: ['else'], elseif: ['elseif'], end: ['end'], endfunction: ['endfunction'],
+            endfor: ['endfor'], endif: ['endif'], endsub: ['endsub'], endwhile: ['endwhile'], exit: ['exit'], exitwhile: ['exitwhile'],
+            for: ['for'], function: ['function'], goto: ['goto'], if: ['if'], let: ['let'], next: ['next'], not: ['not'], or: ['or'],
+            print: ['print'], return: ['return'], step: ['step'], stop: ['stop'], sub: ['sub'], tab: ['tab'],
+            then: ['then'], to: ['to'], while: ['while'], mod: ['mod'],
+            // non reserved keywords can be used as variable names
+            library: ['library'], boolean: ['boolean'], object: ['object'], dynamic: ['dynamic'], void: ['void'], integer: ['integer'],
+        	longinteger: ['longinteger'], float: ['float'], double: ['double'], string: ['string'], in: ['in'], as: ['as']
         })
     },
-    number:     /\d+%|\d*\.?\d+(?:[edED][+-]?\d+)?[!#&]?|&h[0-9ABCDEFabcdef]+/,
-    string:     /"(?:[^"\n\r]*(?:"")*)*"/,
+    numberLit:  /\d+%|\d*\.?\d+(?:[edED][+-]?\d+)?[!#&]?|&h[0-9ABCDEFabcdef]+/,
+    stringLit:  /"(?:[^"\n\r]*(?:"")*)*"/,
     op:         /<>|<=|>=|<<|>>|\+=|-=|\*=|\/=|\\=|<<=|>>=/,
     othr:       /./
 })
@@ -52,23 +60,23 @@ program -> libs functions statement_separators:?                                
 libs -> null 
 |   statement_separators:? library (statement_separators library):*             {% ast.libs %}
 
-library -> "library" __ string                                                  {% ast.lib %}
+library -> %library __ string                                                  {% ast.lib %}
 
 functions -> (statement_separators:? function):*                                {% ast.functions %}
 function -> func {%id%} | sub {%id%}
 
 func ->
-    "function" __ NAME _ "(" params ")" (_ "as" __ rtype):?
+    %function __ NAME _ "(" params ")" (_ %as __ rtype):?
     statement_list end_function                                                 {% ast.func %}
-end_function -> "end" __ "function" | "endfunction" 
+end_function -> %end __ %function | %endfunction 
   
 sub ->
-    "sub" __ NAME _ "(" params ")" (_ "as" __ rtype):? 
-    statement_list ("end" __ "sub" | "endsub")                                  {% ast.func %}
+    %sub __ NAME _ "(" params ")" (_ %as __ rtype):? 
+    statement_list (%end __ %sub | %endsub)                                  {% ast.func %}
 
 anonymous_function ->
-    "function" _ "(" params ")" (_ "as" __ rtype):? statement_list end_function                     {% ast.afunc %}
-|   "sub" _ "(" params ")" (_ "as" __ rtype):? statement_list ("end" _ "sub" | "endsub")            {% ast.afunc %}
+    %function _ "(" params ")" (_ %as __ rtype):? statement_list end_function                     {% ast.afunc %}
+|   %sub _ "(" params ")" (_ %as __ rtype):? statement_list (%end _ %sub | %endsub)            {% ast.afunc %}
 
 params -> _ param (_ "," _ param):* _                                           {% ast.params %}
 | _                                                                             {% ast.params %}                               
@@ -77,11 +85,11 @@ param -> IDENTIFIER param_default:? param_type:?                                
 
 param_default -> _ "=" _ rval                                                   
 
-param_type -> _ "as" __ ptype                                                   
+param_type -> _ %as __ ptype                                                   
 
 ptype -> type {% u %}
-rtype -> type {% u %} | "void"     {% id %}
-type -> "boolean" | "integer" | "longinteger" | "float" | "double" | "string" | "object" | "dynamic" | "function"
+rtype -> type {% u %} | %void     {% id %}
+type -> %boolean | %integer | %longinteger | %float | %double | %string | %object | %dynamic | %function
 # "Interface" is not allowed in param or return
 
 statement_list -> 
@@ -121,9 +129,9 @@ oneline_statement ->
 
 # if ------------------------
 if_statement -> 
-    "if" if_body 
+    %if if_body 
     else_if:*
-    ("else" statement_list_or_space):?
+    (%else statement_list_or_space):?
     endif                                   {% ast.if %}
 |   oneline_if                              {% id %}
 
@@ -131,16 +139,16 @@ else_if -> elseif if_body
 # using EXPR for conditional because while roku allows to have literal arrays and
 # objects and functions in conditions, during complilation they allways fail at runtime
 # so it is better to use EXPR and catch those errors early.
-if_body -> _ EXPR (_ "then"):? statement_list
+if_body -> _ EXPR (_ %then):? statement_list
 
-elseif -> "else" __ "if"
-       |  "elseif"
-endif -> "end" __ "if"
-       | "endif"
+elseif -> %else __ %if
+       |  %elseif
+endif -> %end __ %if
+       | %endif
 
-# space in "else if" below is important! Will error on "elseif"
-oneline_if -> "if" _ EXPR (_ "then"):? _ oneline_statement
-              (_ "else" __ oneline_statement):?                                {% ast.oneline_if %}
+# space in "else if" below is important! Will error on %elseif
+oneline_if -> %if _ EXPR (_ %then):? _ oneline_statement
+              (_ %else __ oneline_statement):?                                {% ast.oneline_if %}
 
 # enables following "valid" BRS code 
 #   if bool then op()
@@ -150,40 +158,40 @@ statement_list_or_space -> statement_list {% id %} | __ {% id %}
 
 # end if -------------------
 
-dim_statement -> "dim" __ IDENTIFIER _ "[" _ expression_list _ "]"              {% ast.dim %}
+dim_statement -> %dim __ IDENTIFIER _ "[" _ expression_list _ "]"              {% ast.dim %}
 expression_list -> (EXPR _ "," _):* EXPR                                        {% ast.expr_list %}
 
 for_loop ->
-    "for" __ IDENTIFIER _ "=" _ EXPR _ "to" _ EXPR (_ "step" _ EXPR):? 
+    %for __ IDENTIFIER _ "=" _ EXPR _ %to _ EXPR (_ %step _ EXPR):? 
     statement_list end_for                                                      {% ast.for %}
-end_for -> "end" __ "for" | "endfor" | "next" (__ IDENTIFIER):?
+end_for -> %end __ %for | %endfor | %next (__ IDENTIFIER):?
 # `endfor :` <- results in error, `next :` is ok :(
 
 for_each ->
-    ("for" __ "each" | "foreach") __ IDENTIFIER __ 
-    "in" _ rval statement_list end_for_each                                     {% ast.foreach %}
-end_for_each -> "end" __ "for" | "endfor" | "next" {% id %}
+    (%for __ %each) __ IDENTIFIER __ 
+    %in _ rval statement_list end_for_each                                     {% ast.foreach %}
+end_for_each -> %end __ %for | %endfor | %next {% id %}
 
 while_loop ->
-    "while" _ EXPR statement_list ("end" __ "while" | "endwhile")               {% ast.while %}
+    %while _ EXPR statement_list (%end __ %while | %endwhile)               {% ast.while %}
 
 # `exitfor` not allowed, must be `exit for` 
-exit_loop -> "exit" __ "while"                                                  {% ast.exit %}
-          | "exitwhile"                                                         {% ast.exit %}
-          | "exit" __ "for"                                                     {% ast.exit %}
+exit_loop -> %exit __ %while                                                  {% ast.exit %}
+          | %exitwhile                                                         {% ast.exit %}
+          | %exit __ %for                                                     {% ast.exit %}
 
-return_statement -> "return" (_ rval):?                                         {% ast.return %}
+return_statement -> %return (_ rval):?                                         {% ast.return %}
 
-stop_statement -> "stop"                                                        {% ast.stop %}
+stop_statement -> %stop                                                        {% ast.stop %}
 
-end_statement -> "end"                                                          {% ast.end %}
+end_statement -> %end                                                          {% ast.end %}
 
 goto_label -> IDENTIFIER _ ":"
 
-goto_statement -> "goto" __ IDENTIFIER
+goto_statement -> %goto __ IDENTIFIER
 
 print_statement -> print print_items                                            {% ast.print %}
-print -> "print"                                                                {% id %}
+print -> %print                                                                {% id %}
        | "?"                                                                    {% id %}
 print_items -> 
     psep:*                                                                      {% id %} 
@@ -274,11 +282,11 @@ S -> S _ shft_op _ A    {% ast.bop %}
    | A                  {% id %}
 C -> C _ comp_op _ S    {% ast.bop %}
    | S                  {% id %}
-N -> "not" _ N          {% ast.uop %}
+N -> %not _ N          {% ast.uop %}
    | C                  {% id %}
-D -> D _ "and" _ N      {% ast.bop %}
+D -> D _ %and _ N      {% ast.bop %}
    | N                  {% id %}
-O -> O _ "or" _ D       {% ast.bop %}
+O -> O _ %or _ D       {% ast.bop %}
    | D                  {% id %}
 
 # resolve ambiguity in print statment ie `? 1 -1` is it ?(1-1) or ?(1), (-1)
@@ -297,16 +305,16 @@ PS -> PS _ shft_op _ A  {% ast.bop %}
    | PA                 {% id %}
 PC -> PC _ comp_op _ S  {% ast.bop %}
    | PS                 {% id %}
-PN -> "not" _ N         {% ast.uop %}
+PN -> %not _ N         {% ast.uop %}
    | PC                 {% id %}
-PD -> PD _ "and" _ N    {% ast.bop %}
+PD -> PD _ %and _ N    {% ast.bop %}
    | PN                 {% id %}
-PO -> PO _ "or" _ D     {% ast.bop %}
+PO -> PO _ %or _ D     {% ast.bop %}
    | PD                 {% id %}
 ###########
 
 add_op -> "+" | "-"
-mul_op -> "*" | "/" | "\\" | "mod"
+mul_op -> "*" | "/" | "\\" | %mod
 shft_op -> ">>" | "<<"
 comp_op -> "=" | "<>" | "<" | ">" | "<=" | ">=" 
 
@@ -315,11 +323,53 @@ _ -> %ws:?                      {% id %}
 __ -> %ws                       {% id %}
 comment    -> %comment          {% ast.comment %}
 NAME       -> %IDENTIFIER       {% ast.identifier %}
+|             UNRESERVED        {% ast.identifier %}
 IDENTIFIER -> %IDENTIFIER       {% ast.identifier %}
-RESERVED   -> %reserved         {% ast.identifier %}
-number     -> %number           {% ast.number %}
-string     -> %string           {% ast.string %}
-constant   -> %constant         {% ast.constant %}
+|             UNRESERVED        {% ast.identifier %}
+number     -> %numberLit        {% ast.number %}
+string     -> %stringLit        {% ast.string %}
+constant   -> %true             {% ast.constant %}
+|             %false            {% ast.constant %}
+|             %invalid          {% ast.constant %}
 NL         -> %comment          {% ast.comment %}
             | %NL               {% id %}
 _NL        -> _ | NL:+
+
+RESERVED   ->
+            %and        {%id%} | %dim       {%id%} | %each       {%id%} | %else      {%id%} |
+            %elseif     {%id%} | %end       {%id%} | %endfunction {%id%} | %endif    {%id%} |
+            %endsub     {%id%} | %endwhile  {%id%} | %for        {%id%} | %function  {%id%} |
+            %goto       {%id%} | %if        {%id%} | %let        {%id%} | %next      {%id%} |
+            %not        {%id%} | %or        {%id%} | %print      {%id%} | %return    {%id%} |
+            %step       {%id%} | %stop      {%id%} | %sub        {%id%} | %tab       {%id%} |
+            %then       {%id%} | %to        {%id%} | %while      {%id%} | %exit      {%id%} |
+            %exitwhile  {%id%} | %mod       {%id%} | %endfor     {%id%}
+
+UNRESERVED ->
+            %library {%id%} | %boolean {%id%} | %object {%id%} | %dynamic {%id%} | %void {%id%} | %integer {%id%} |
+        	%longinteger {%id%} | %float {%id%} | %double {%id%} | %string {%id%} | %in {%id%}
+
+
+#######################################
+# custom extensions (code comments)
+#######################################
+xdeclaration -> (NL (interface | enum)):* NL
+
+interface -> "interface" __ NAME
+             interface_members
+             "end" __ "interface"
+interface_members -> (NL interface_member):* NL
+interface_member  -> 
+             "property" __ NAME __ "as" __ IDENTIFIER
+|            "function" _ "(" xparams ")" (__ "as" __ IDENTIFIER):?
+
+xparams ->   _ xparam (_ "," _ xparam):* _                                        {% ast.params %}
+|            _                                                                    {% ast.params %}                               
+xparam -> IDENTIFIER param_default:? xparam_type:?                                {% ast.param %}
+xparam_type -> _ "as" __ IDENTIFIER                                                   
+
+enum      -> "enum" __ NAME
+             enum_members
+             "end" __ "enum"
+enum_members -> (NL enum_member):* NL
+enum_member  -> NAME _ "=" _ (string | number)

@@ -498,27 +498,6 @@ module.exports = {
     'constant': constant
 }
 
-function check_condition(t) {
-    if (t[0] == null) {
-        //console.log("  W: no space after if" )
-        return
-    }
-    if (t[1].node == '()') {
-        //console.log("  W: () around condition", t[0].line, t[0].col)
-    }
-}
-
-function check_fn(t) {
-    let cmts = t[0]? t[0][0] : null
-    const reducer = (a, v) => {
-        v = v[0]
-        if (typeof(v) === "string" && v.substr(0,2) === "''") {
-            return a + v.substring(2)
-        }
-        return a
-    }
-    //console.log(cmts.reduce(reducer, ''))
-}
 
 const flat = d => {
     let a = []
