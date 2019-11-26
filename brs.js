@@ -21,14 +21,14 @@ let lexer = moo.compile({
             and: ['and'], dim: ['dim'], each: ['each'], else: ['else'], elseif: ['elseif'], end: ['end'], endfunction: ['endfunction'],
             endfor: ['endfor'], endif: ['endif'], endsub: ['endsub'], endwhile: ['endwhile'], exit: ['exit'], exitwhile: ['exitwhile'],
             for: ['for'], function: ['function'], goto: ['goto'], if: ['if'], let: ['let'], next: ['next'], not: ['not'], or: ['or'],
-            print: ['print'], return: ['return'], step: ['step'], stop: ['stop'], sub: ['sub'], tab: ['tab'],
+            print: ['print'], return: ['return'], step: ['step'], stop: ['stop'], sub: ['sub'], //tab: ['tab'],
             then: ['then'], to: ['to'], while: ['while'], mod: ['mod'],
             // non reserved keywords can be used as variable names
             library: ['library'], boolean: ['boolean'], object: ['object'], dynamic: ['dynamic'], void: ['void'], integer: ['integer'],
         	longinteger: ['longinteger'], float: ['float'], double: ['double'], string: ['string'], in: ['in'], as: ['as']
         })
     },
-    numberLit:  /\d+%|\d*\.?\d+(?:[edED][+-]?\d+)?[!#&]?|&h[0-9ABCDEFabcdef]+/,
+    numberLit:  /\d+%|\d*\.?\d+(?:[edED][+-]?\d+)?[!#&]?|&[hH][0-9ABCDEFabcdef]+/,
     stringLit:  /"(?:[^"\n\r]*(?:"")*)*"/,
     op:         /<>|<=|>=|<<|>>|\+=|-=|\*=|\/=|\\=|<<=|>>=/,
     othr:       /./
@@ -50,9 +50,9 @@ const flat = d => {
 var grammar = {
     Lexer: lexer,
     ParserRules: [
-    {"name": "program$ebnf$1", "symbols": ["statement_separators"], "postprocess": id},
-    {"name": "program$ebnf$1", "symbols": [], "postprocess": function(d) {return null;}},
-    {"name": "program", "symbols": ["libs", "functions", "program$ebnf$1"], "postprocess": ast.program},
+    {"name": "program$subexpression$1", "symbols": ["statement_separators"]},
+    {"name": "program$subexpression$1", "symbols": ["_"]},
+    {"name": "program", "symbols": ["libs", "functions", "program$subexpression$1"], "postprocess": ast.program},
     {"name": "libs", "symbols": []},
     {"name": "libs$ebnf$1", "symbols": ["statement_separators"], "postprocess": id},
     {"name": "libs$ebnf$1", "symbols": [], "postprocess": function(d) {return null;}},
@@ -402,7 +402,6 @@ var grammar = {
     {"name": "RESERVED", "symbols": [{type: "step"}], "postprocess": id},
     {"name": "RESERVED", "symbols": [{type: "stop"}], "postprocess": id},
     {"name": "RESERVED", "symbols": [{type: "sub"}], "postprocess": id},
-    {"name": "RESERVED", "symbols": [{type: "tab"}], "postprocess": id},
     {"name": "RESERVED", "symbols": [{type: "then"}], "postprocess": id},
     {"name": "RESERVED", "symbols": [{type: "to"}], "postprocess": id},
     {"name": "RESERVED", "symbols": [{type: "while"}], "postprocess": id},
@@ -421,6 +420,7 @@ var grammar = {
     {"name": "UNRESERVED", "symbols": [{type: "double"}], "postprocess": id},
     {"name": "UNRESERVED", "symbols": [{type: "string"}], "postprocess": id},
     {"name": "UNRESERVED", "symbols": [{type: "in"}], "postprocess": id},
+    {"name": "UNRESERVED", "symbols": [{type: "as"}], "postprocess": id},
     {"name": "xdeclaration$ebnf$1", "symbols": []},
     {"name": "xdeclaration$ebnf$1$subexpression$1$subexpression$1", "symbols": ["interface"]},
     {"name": "xdeclaration$ebnf$1$subexpression$1$subexpression$1", "symbols": ["enum"]},

@@ -110,6 +110,8 @@ module.exports = {
 
             if (parser.results.length > 1) {
                 console.log('Ambiguity detected!', parser.results.length)
+            } else if (parser.results.length == 0) {
+                return { errors: [{ level:0, message: 'Unable to parse input', loc:'0'}]}
             }
 
             if (options.ast != null) {

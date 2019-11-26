@@ -231,7 +231,6 @@ function lintGlobalScope(codeFiles) {
     let scopedFunctions = new Map()
     for (const file of Object.keys(codeFiles)) {
         if (!/^source\//i.test(file)) continue
-
         const entry = codeFiles[file]
 
         if (entry.ast) {

@@ -24,14 +24,14 @@ let lexer = moo.compile({
             and: ['and'], dim: ['dim'], each: ['each'], else: ['else'], elseif: ['elseif'], end: ['end'], endfunction: ['endfunction'],
             endfor: ['endfor'], endif: ['endif'], endsub: ['endsub'], endwhile: ['endwhile'], exit: ['exit'], exitwhile: ['exitwhile'],
             for: ['for'], function: ['function'], goto: ['goto'], if: ['if'], let: ['let'], next: ['next'], not: ['not'], or: ['or'],
-            print: ['print'], return: ['return'], step: ['step'], stop: ['stop'], sub: ['sub'], tab: ['tab'],
+            print: ['print'], return: ['return'], step: ['step'], stop: ['stop'], sub: ['sub'], //tab: ['tab'],
             then: ['then'], to: ['to'], while: ['while'], mod: ['mod'],
             // non reserved keywords can be used as variable names
             library: ['library'], boolean: ['boolean'], object: ['object'], dynamic: ['dynamic'], void: ['void'], integer: ['integer'],
         	longinteger: ['longinteger'], float: ['float'], double: ['double'], string: ['string'], in: ['in'], as: ['as']
         })
     },
-    numberLit:  /\d+%|\d*\.?\d+(?:[edED][+-]?\d+)?[!#&]?|&h[0-9ABCDEFabcdef]+/,
+    numberLit:  /\d+%|\d*\.?\d+(?:[edED][+-]?\d+)?[!#&]?|&[hH][0-9ABCDEFabcdef]+/,
     stringLit:  /"(?:[^"\n\r]*(?:"")*)*"/,
     op:         /<>|<=|>=|<<|>>|\+=|-=|\*=|\/=|\\=|<<=|>>=/,
     othr:       /./
@@ -55,12 +55,12 @@ const flat = d => {
 @lexer lexer
 
 
-program -> libs functions statement_separators:?                                {% ast.program %}
+program -> libs functions (statement_separators | _)                            {% ast.program %}
 
 libs -> null 
 |   statement_separators:? library (statement_separators library):*             {% ast.libs %}
 
-library -> %library __ string                                                  {% ast.lib %}
+library -> %library __ string                                                   {% ast.lib %}
 
 functions -> (statement_separators:? function):*                                {% ast.functions %}
 function -> func {%id%} | sub {%id%}
@@ -72,10 +72,10 @@ end_function -> %end __ %function | %endfunction
   
 sub ->
     %sub __ NAME _ "(" params ")" (_ %as __ rtype):? 
-    statement_list (%end __ %sub | %endsub)                                  {% ast.func %}
+    statement_list (%end __ %sub | %endsub)                                     {% ast.func %}
 
 anonymous_function ->
-    %function _ "(" params ")" (_ %as __ rtype):? statement_list end_function                     {% ast.afunc %}
+    %function _ "(" params ")" (_ %as __ rtype):? statement_list end_function                  {% ast.afunc %}
 |   %sub _ "(" params ")" (_ %as __ rtype):? statement_list (%end _ %sub | %endsub)            {% ast.afunc %}
 
 params -> _ param (_ "," _ param):* _                                           {% ast.params %}
@@ -341,13 +341,13 @@ RESERVED   ->
             %endsub     {%id%} | %endwhile  {%id%} | %for        {%id%} | %function  {%id%} |
             %goto       {%id%} | %if        {%id%} | %let        {%id%} | %next      {%id%} |
             %not        {%id%} | %or        {%id%} | %print      {%id%} | %return    {%id%} |
-            %step       {%id%} | %stop      {%id%} | %sub        {%id%} | %tab       {%id%} |
+            %step       {%id%} | %stop      {%id%} | %sub        {%id%} | 
             %then       {%id%} | %to        {%id%} | %while      {%id%} | %exit      {%id%} |
             %exitwhile  {%id%} | %mod       {%id%} | %endfor     {%id%}
 
 UNRESERVED ->
             %library {%id%} | %boolean {%id%} | %object {%id%} | %dynamic {%id%} | %void {%id%} | %integer {%id%} |
-        	%longinteger {%id%} | %float {%id%} | %double {%id%} | %string {%id%} | %in {%id%}
+        	%longinteger {%id%} | %float {%id%} | %double {%id%} | %string {%id%} | %in {%id%} | %as {%id%}
 
 
 #######################################
