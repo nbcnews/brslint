@@ -7,9 +7,12 @@ function program(t) {
 }
 
 function libs(t) {
-    let l = [t[1]]
-    l.concat(t[2].map(l => l[1]))
-    return l
+    t[1].comments = t[0].filter(a => a.node)
+    let libs = t[2].map(lib => {
+        lib[1].comments = lib[0].filter(a => a.node)
+        return lib[1]
+    })
+    return [t[1]].concat(libs)
 }
 
 function lib(t) {
@@ -20,9 +23,8 @@ function lib(t) {
 }
 
 function functions(t) {
-    let fns = t[0]
-    return fns.map(f => {
-        f[1].comments = f[0]
+    return t[0].map(f => {
+        f[1].comments = f[0].filter(a => a.node)
         return f[1]
     })
 }
@@ -243,6 +245,22 @@ function oneline_if(t) {
 }
 
 function comment(t) {
+    let comment = t[0].text
+    if (/^'```/.test(comment)) {
+        let code = comment.replace(/^'```.*\r?\n/gm, '')
+                          .replace(/^'/gm, '')
+        return {
+            node: 'codeComment',
+            text: code,
+            li: {line: t[0].line, col: t[0].col}
+        }
+    } else if ((/^'\*/.test(comment))) {
+        return {
+            node: 'docuComment',
+            text: comment.replace(/^'\*+/gm, ''),
+            li: {line: t[0].line, col: t[0].col}
+        }
+    }
     return t[0]
 }
 
@@ -451,6 +469,118 @@ function print_separators(t) {
 }
 
 
+// extensions
+function declarations(t) {
+    return t[0].map(a => a[1][0])
+}
+function interface(t) {
+    return {
+        name: t[2].val,
+        extends: t[3] ? t[3][3].val : null,
+        members: t[4][0].map(a => a[1]),
+        li: { line: t[0].line, col: t[0].col }
+    }
+}
+function iproperty(t) {
+    return {
+        node: 'property',
+        name: t[2].val,
+        type: t[6],
+        li: { line: t[0].line, col: t[0].col }
+    }
+}
+function ifunction(t) {
+    return {
+        node: 'function',
+        name: t[2].val,
+        params: t[5].params,
+        type: t[7] ? t[7][3] : "void",
+        li: { line: t[0].line, col: t[0].col }
+    }
+}
+function xparam(t) {
+    return {
+        nade: 'param',
+        name: t[0].val,
+        type: t[4],
+        li: t[0].li
+    }
+}
+function denum(t) {
+    return {
+        node: 'enum',
+        name: t[2].val,
+        cases: t[3][0].map(a => a[1]),
+        li: { line: t[0].line, col: t[0].col }
+    }
+}
+function enummember(t) {
+    return {
+        node: 'case',
+        name: t[0].val,
+        value: t[1] ? t[1][3][0].val : null,
+        li: { line: t[0].line, col: t[0].col }
+    }
+}
+function typeList(t) {
+    return [t[1]].concat(t[2].map(a => a[3]))
+}
+function namedType(t) {
+    let name = t[0].val
+    let optional = true
+    if (/\!$/.test(name)) {
+        optional = false
+        name = name.substr(0, name.length - 1)
+    }
+    return {
+        node: 'namedType',
+        name: name,
+        optional: optional,
+        li: t[0].li
+    }
+}
+function arrayType(t) {
+    return {
+        node: 'arrayType',
+        type: t[2],
+        optional: true,
+        li: { line: t[0].line, col: t[0].col }
+    }
+}
+function funcType(t) {
+    return {
+        node: 'functionType',
+        typeList: t[1],
+        type: t[6] || null,
+        optional: true,
+        li: { line: t[0].line, col: t[0].col }
+    }
+}
+function tupleType(t) {
+    return {
+        node: 'tupleType',
+        typeList: t[1],
+        optional: true,
+        li: { line: t[0].line, col: t[0].col }
+    }
+}
+function typedef(t) {
+    return {
+        node: 'typedef',
+        name: t[2].val,
+        type: t[6]
+    }
+}
+function nonOptional(t) {
+    if (t[0].text != '(') {
+        t[0].optional = false
+        return t[0]
+    } else {
+        t[1].optional = false
+        return t[1]
+    }
+}
+
 module.exports = {
     'program': program,
     'libs': libs,
@@ -495,7 +625,23 @@ module.exports = {
     'string': string,
     'number': number,
     'identifier': identifier,
-    'constant': constant
+    'constant': constant,
+
+    //type extensions
+    'declarations': declarations,
+    'interface': interface,
+    'iproperty': iproperty,
+    'ifunction': ifunction,
+    'xparam': xparam,
+    'enum': denum,
+    'enummember': enummember,
+    'typeList': typeList,
+    'namedType': namedType,
+    'arrayType': arrayType,
+    'funcType': funcType,
+    'tupleType': tupleType,
+    'nonOptional': nonOptional,
+    'typedef': typedef
 }
 
 

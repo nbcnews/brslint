@@ -5,6 +5,7 @@ const grammar = require("./brs")
 const preprocessor = require("./preprocessor")
 
 let warnings = [], globals = [], scoped = {}
+const compiledGrammar = nearley.Grammar.fromCompiled(grammar)
 
 function traverse(node, callback, ctx) {
     if (!node) return
@@ -96,6 +97,65 @@ function unassignedVar(node, vars) {
     }
 }
 
+function parseComments(ast) {
+    for (const func of ast.functions) {
+        parseDocuComment(func)
+    }
+
+    const trailingComments = ast.tokens[2][0]
+    const results = [...ast.libs, ...ast.functions]
+        .flatMap(a => a.comments)
+        .concat(trailingComments)
+        .filter(b => b.node === 'codeComment')
+        .map(c => parseCodeComment(c))
+    let types = new Map()
+    let errors = []
+    for (const result of results) {
+        for (const type of result.ast || []) {
+            types.set(type.name, type)
+        }
+        errors.push(...result.errors)
+    }
+
+    return { types: types, errors: errors }
+}
+
+function parseDocuComment(func) {
+    let errors = []
+    const docuComment = func.comments.filter(b => b.node === 'docuComment').pop()
+    if (!docuComment) return
+
+    const grammar = Object.assign(Object.create(Object.getPrototypeOf(compiledGrammar)), compiledGrammar, { start: "xparam" })
+    const params = docuComment.text.match(/@param.*/gm)
+    for (const param of params || []) {
+        const parser = new nearley.Parser(grammar)
+        try {
+            parser.feed(param.replace(/@param\s*/, ''))
+            let xparam = parser.results[0]
+            let fparam = func.params.find(a => a.name == xparam.name)
+            fparam.xtype = xparam
+        } catch (error) {
+            console.log(error)
+        }
+    }
+}
+
+function parseCodeComment(codeComment) {
+    // crazy way to clone compiledGrammar 8O
+    const grammar = Object.assign(Object.create(Object.getPrototypeOf(compiledGrammar)), compiledGrammar, { start: "xdeclaration" })
+    let parser = new nearley.Parser(grammar)
+    parser.feed(codeComment.text)
+
+    if (parser.results.length > 1) {
+        console.log('Ambiguity detected!', parser.results.length)
+    } else if (parser.results.length == 0) {
+        console.log('Unable to parse input')
+        return { errors: [{level: 1, message: 'Unable to parse code comment', loc: codeComment.li.line }] }
+    }
+
+    return { ast: parser.results[0], errors: [] }
+}
+
 module.exports = {
     parse: function (input, options) {
         options = options || {}
@@ -105,7 +165,7 @@ module.exports = {
                 input = preprocessor(input, options.consts)
             }
 
-            let parser = new nearley.Parser(nearley.Grammar.fromCompiled(grammar),{ keepHistory: options.debug })
+            let parser = new nearley.Parser(compiledGrammar, { keepHistory: options.debug })
             parser.feed(input)
 
             if (parser.results.length > 1) {
@@ -118,7 +178,10 @@ module.exports = {
                 console.log(JSON.stringify(parser.results[0]))
             }
 
-            return { ast: parser.results[0], errors: errors }
+            const result = parseComments(parser.results[0])
+            errors.push(...result.errors)
+
+            return { ast: parser.results[0], types: result.types, errors: errors }
         }
         catch (x) {
             const regex = / at line (\d+) col (\d+):\n\n\s*/i

@@ -15,7 +15,7 @@ const caseInsensitiveKeywords = map => {
 }
 
 let lexer = moo.compile({
-    comment:    { match: /[ \t]*(?:REM(?![\w!#$%])|').*?(?:\r?\n[ \t]*|$)/, lineBreaks: true },
+    comment:    { match: /(?:[ \t]*(?:REM(?![\w!#$%])|').*(?:\r?\n[ \t]*|))+/, lineBreaks: true },
     NL:         { match: /(?:[ \t]*\r?\n[ \t]*)+/, lineBreaks: true },
     ws:         { match: /[ \t]+/ },
     IDENTIFIER: { match: /[a-zA-Z_][\w]*[$%!#]?/, value: x=>x.toLowerCase(),
@@ -34,8 +34,10 @@ let lexer = moo.compile({
     numberLit:  /\d+%|\d*\.?\d+(?:[edED][+-]?\d+)?[!#&]?|&[hH][0-9ABCDEFabcdef]+/,
     stringLit:  /"(?:[^"\n\r]*(?:"")*)*"/,
     op:         /<>|<=|>=|<<|>>|\+=|-=|\*=|\/=|\\=|<<=|>>=/,
+    arrow:      /->/,
     othr:       /./
 })
+
 const u = d => d[0][0]
 const l = (s) => (d) => s
 const flat = d => {
@@ -331,7 +333,7 @@ string     -> %stringLit        {% ast.string %}
 constant   -> %true             {% ast.constant %}
 |             %false            {% ast.constant %}
 |             %invalid          {% ast.constant %}
-NL         -> %comment          {% ast.comment %}
+NL         -> comment           {% id %}
             | %NL               {% id %}
 _NL        -> _ | NL:+
 
@@ -353,23 +355,48 @@ UNRESERVED ->
 #######################################
 # custom extensions (code comments)
 #######################################
-xdeclaration -> (NL (interface | enum)):* NL
+xdeclaration -> ((NL:* | _) (interface | enum | typedef)):* (NL:* | __)           {% ast.declarations %}
 
-interface -> "interface" __ NAME
+interface -> "interface" __ NAME (__ "extends" __ NAME):?
              interface_members
-             "end" __ "interface"
-interface_members -> (NL interface_member):* NL
+             "end" __ "interface"                                                 {% ast.interface %}
+
+interface_members -> (NL:+ interface_member):* NL:+
+
 interface_member  -> 
-             "property" __ NAME __ "as" __ IDENTIFIER
-|            "function" _ "(" xparams ")" (__ "as" __ IDENTIFIER):?
+             "property" __ NAME __ "as" __ xtype                                  {% ast.iproperty %}
+|            "function" __ NAME _ "(" xparams ")" (__ "as" __ xtype):?            {% ast.ifunction %}
 
 xparams ->   _ xparam (_ "," _ xparam):* _                                        {% ast.params %}
-|            _                                                                    {% ast.params %}                               
-xparam -> IDENTIFIER param_default:? xparam_type:?                                {% ast.param %}
-xparam_type -> _ "as" __ IDENTIFIER                                                   
+|            _                                                                    {% ast.params %}
+
+xparam -> IDENTIFIER __ "as" __ xtype                                             {% ast.xparam %}                                                 
 
 enum      -> "enum" __ NAME
              enum_members
-             "end" __ "enum"
-enum_members -> (NL enum_member):* NL
-enum_member  -> NAME _ "=" _ (string | number)
+             "end" __ "enum"                                                      {% ast.enum %}
+
+enum_members -> (NL:+ enum_member):* NL:+
+enum_member  -> NAME (_ "=" _ (string | number)):?                                {% ast.enummember %}
+
+xtype_list   -> _ xtype (_ "," _ xtype):* _                                       {% ast.typeList %}
+xtype_list2  -> _ xtype (_ "," _ xtype):+ _                                       {% ast.typeList %}
+xtype_list0  -> xtype_list {%id%}  | _  {% l([]) %}
+
+xtype       ->  otype                   {%id%}
+|               otype "!"               {% ast.nonOptional %}
+|               func_type               {%id%}
+|               "(" func_type ")" "!"   {% ast.nonOptional %}
+
+otype       ->  named_type {%id%} | array_type {%id%} 
+|               tuple_type {%id%}
+
+named_type  ->  IDENTIFIER                                                        {% ast.namedType %}
+array_type  ->  "[" _ xtype _ "]"                                                 {% ast.arrayType %}
+tuple_type  ->  "[" xtype_list2 "]"                                               {% ast.tupleType %}
+func_type   ->  "(" xtype_list0 ")" _ "->" _ xtype                                {% ast.funcType  %}
+# void function introduces ambiguity with: (func_type)!
+# () -> void should be used instead
+#func_void   ->  "(" xtype_list0 ")"                                               {% ast.funcType  %}
+
+typedef ->  "typedef" __ NAME _ "=" _ xtype                                       {% ast.typedef %}
