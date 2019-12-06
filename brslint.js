@@ -105,7 +105,7 @@ function parseComments(ast) {
     const trailingComments = ast.tokens[2][0]
     const results = [...ast.libs, ...ast.functions]
         .flatMap(a => a.comments)
-        .concat(trailingComments)
+        .concat(trailingComments || [])
         .filter(b => b.node === 'codeComment')
         .map(c => parseCodeComment(c))
     let types = new Map()
@@ -184,6 +184,7 @@ module.exports = {
             return { ast: parser.results[0], types: result.types, errors: errors }
         }
         catch (x) {
+            console.log(x)
             const regex = / at line (\d+) col (\d+):\n\n\s*/i
             let loc = x.token.line + ',' + x.token.col
             let message = x.message.replace(regex, ': `')

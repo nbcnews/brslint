@@ -4,6 +4,7 @@
 
 const lint = require('./brslint.js'),
     xlint = require('./xmllint.js'),
+    statica = require('./static'),
     print = require('./pprint.js'),
     fs = require('fs'),
     pth = require('path'),
@@ -55,6 +56,7 @@ async function main() {
     if (args.g) {
         lintGlobalScope(codeByFile)
     }
+    statica.check(Object.values(componentsByFile)[0])
 
     const processingTime = process.hrtime(start)[0]*1000 + Math.round(process.hrtime(start)[1]/1000000)
 

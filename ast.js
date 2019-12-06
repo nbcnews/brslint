@@ -24,7 +24,7 @@ function lib(t) {
 
 function functions(t) {
     return t[0].map(f => {
-        f[1].comments = f[0].filter(a => a.node)
+        f[1].comments = (f[0] || []).filter(a => a.node)
         return f[1]
     })
 }
