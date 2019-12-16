@@ -40,6 +40,7 @@ async function main() {
     const rules = require('./rules')(config.rules, parseInt(args.warning))
     const xmlFiles = readdir(config, '.xml', args.recursive)
     const files = readdir(config, '.brs', args.recursive)
+    const brxFiles = readdir(config, '.brx', args.recursive)
 
     if (files.length === 0) {
         console.log(color.yellow('Warning') + ": Couldn't find any BrightScript files to lint")
@@ -49,14 +50,16 @@ async function main() {
     const componentsByFile = await parseComponentFiles(xmlFiles)
     const codeByFile = parseBrightScriptFiles(files)
     const embeddedByFile = parseEmbeddedBrightScript(componentsByFile)
+    const brxByFile = parseBRXFiles(brxFiles)
     Object.assign(codeByFile, embeddedByFile)
+
+    resolveComponentFunctions(componentsByFile, codeByFile)
+    resolveInheritedFunctions(componentsByFile)
+
+    typeCheck(componentsByFile, codeByFile, brxByFile)
 
     lintUnscoped(codeByFile, rules)
     lintComponents(componentsByFile, codeByFile)
-    if (args.g) {
-        lintGlobalScope(codeByFile)
-    }
-    statica.check(Object.values(componentsByFile)[0])
 
     const processingTime = process.hrtime(start)[0]*1000 + Math.round(process.hrtime(start)[1]/1000000)
 
@@ -121,6 +124,25 @@ function parseEmbeddedBrightScript(components) {
     return parsedFiles
 }
 
+function parseBRXFiles(files) {
+    let parsedFiles = {}
+    for (const file of files) {
+        try {
+            const input = fs.readFileSync(file, 'utf8')
+            const result = lint.parseExtensions(input)
+            parsedFiles[file] = result
+        } catch (error) {
+            if (error.code === 'ENOENT' || error.code === 'EACCES') {
+                console.log(`Unable to read (${error.code}) ` + file)
+            } else {
+                console.log(error)
+            }
+        }
+    }
+
+    return parsedFiles
+}
+
 function lintUnscoped(codeFiles, rules) {
     for (const file of Object.keys(codeFiles)) {
         const result = codeFiles[file]
@@ -133,22 +155,20 @@ function lintUnscoped(codeFiles, rules) {
 }
 
 function lintComponents(components, codeFiles) {
-    resolveComponentFunctions(components, codeFiles)
-    resolveInheritedFunctions(components)
     lintComponentsXml(components)
 
-    const globalFunctions = new Map(Object.entries(require('./global.json')))
+    // const globalFunctions = new Map()
 
-    for (const component of Object.values(components)) {
-        if (!component) continue
+    // for (const component of Object.values(components)) {
+    //     if (!component) continue
 
-        for (const func of component.functions.values()) {
-            const errors = lint.check(func, component.functions, globalFunctions)
-            if (errors.length > 0) {
-                codeFiles[func.file].errors.push(...errors)
-            }
-        }
-    }
+    //     for (const func of component.functions.values()) {
+    //         const errors = lint.check(func, component.functions, globalFunctions)
+    //         if (errors.length > 0) {
+    //             codeFiles[func.file].errors.push(...errors)
+    //         }
+    //     }
+    // }
 }
 
 function lintComponentsXml(components) {
@@ -177,7 +197,6 @@ function resolveComponentFunctions(components, codeFiles) {
             continue
         }
 
-        const globalFunctions = new Map(Object.entries(require('./global.json')))
         let scopedFunctions = new Map()
 
         for (const [ast, path] of asts) {
@@ -191,8 +210,6 @@ function resolveComponentFunctions(components, codeFiles) {
                 const lookupName = func.name.toLowerCase()
                 if (scopedFunctions.has(lookupName)) {
                     codeFiles[path].errors.push({level: 1, message: 'Redefining function `' + func.name + '`', loc: func.tokens[0].line + ',' + func.tokens[0].col})
-                } else if (globalFunctions.has(lookupName)) {
-                    codeFiles[path].errors.push({level: 1, message: 'Redefining global function `' + func.name + '`', loc: func.tokens[0].line + ',' + func.tokens[0].col})
                 } else {
                     func.file = path
                     scopedFunctions.set(lookupName, func)
@@ -220,6 +237,64 @@ function copyFunctionsFromBase(components, componentEntry) {
     }
 }
 
+function typeCheck(components, codeFiles, brxFiles) {
+    let globalTypes = parseInterfaceFile('./types.brx')
+    let globalFunctions = parseInterfaceFile('./functions.brx')
+
+    for (const brx of Object.values(brxFiles)) {
+        if (brx.ast) {
+            globalTypes = new Map([...globalTypes, ...statica.typesFromAST(brx.ast)])
+        }
+    }
+
+    //component interfaces
+    for (const componentEntry of Object.values(components)) {
+        const component = componentEntry.component
+        if (!component) continue
+        globalTypes.set(component.name.toLowerCase(), statica.typeFromComponent(component))
+    }
+
+    // type check components
+    
+    for (const componentEntry of Object.values(components)) {
+        const component = componentEntry.component
+        if (!component) continue
+
+        if (component.extends) {
+            const baseType = globalTypes.get(component.extends.toLowerCase())
+            if (!baseType) {
+                console.log(`Unknown base type ${component.extends} in component ${component.name}` )
+            }
+            component.base = baseType
+        }
+
+        let types = new Map(globalTypes)
+        // scoped types ie. functions and types defined in components
+        for (const code of Object.values(codeFiles)) {
+            types = new Map([...types, ...statica.typesFromAST(code.types.values())])
+        }
+
+        // check for collisions with global names
+        let scopedFunctions = new Map([...globalFunctions, ...statica.typesFromAST(componentEntry.functions.values())])
+        for (const type of globalTypes.values()) {
+            if (type.extends) {
+                const baseType = globalTypes.get(type.extends.toLowerCase())
+                type.base = baseType
+            }
+        }
+    
+        componentEntry.types = globalTypes
+        componentEntry.scopedFunctions = scopedFunctions
+        statica.check(componentEntry)
+    }
+}
+
+function parseInterfaceFile(path) {
+    const input = fs.readFileSync(require.resolve(path), 'utf8')
+    const result = lint.parseExtensions(input)
+    return statica.typesFromAST(result.ast)
+}
+
 function scriptPath(path, base) {
     if (/^pkg:\//i.test(path)) {
         return path.replace(/^pkg:\//i, '')
@@ -229,7 +304,7 @@ function scriptPath(path, base) {
 }
 
 function lintGlobalScope(codeFiles) {
-    const globalFunctions = new Map(Object.entries(require('./global.json')))
+    const globalFunctions = global
     let scopedFunctions = new Map()
     for (const file of Object.keys(codeFiles)) {
         if (!/^source\//i.test(file)) continue

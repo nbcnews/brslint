@@ -1,0 +1,73 @@
+' Print Functions
+function pos() as Integer
+function tab(x as Integer)
+
+' Math Functions
+function abs(x as Float) as Float
+function atn(x as Float) as Float
+function cdbl(x as Integer) as Float
+function cint(x as Float) as Integer
+function cos(x as Float) as Float
+function csng(x as Integer) as Float
+function exp(x as Float) as Float
+function fix(x as Float) as Integer
+function int(x as Float) as Integer
+function log(x as Float) as Float
+function rnd(x as Integer) as Integer
+function sgn(x as Float) as Integer
+function sin(x as Float) as Float
+function sqr(x as Float) as Float
+function tan(x as Float) as Float
+
+' String Functions
+function ucase(s as String) as String
+function lcase(s as String) as String
+function asc(s as String) as Integer
+function chr(n as Integer) as String
+function instr(start as Integer, text as String, substr as String) as Integer
+function left(s as String, n as Integer) as String
+function len(s as String) as Integer
+function mid(s as String, p as Integer, n as Integer) as String
+function right(s as String, n as Integer) as String
+function str(f as Float) as String
+function stri(value as Integer, radix as Integer) as String
+function string(n as Integer, s as String) as String
+function stringi(n as Integer, ch as Integer) as String
+'Val(str as String) as Float
+'Val(str as String, radix as Integer) as Integer
+function val(s as String, radix as Integer) as Float
+function substitute(str as String, arg0 as String, arg1 as String, arg2 as String, arg3 as String) as String 
+
+' Runtime Functions
+function CreateObject(componentName as String, arg as Object) as Object
+function type(x as Object) as String
+function getglobalaa() as Object
+function box(x as Object) as Object
+function run(file as String) as Object
+function eval(script as String) as Object
+function getlastruncompileerror() as Object
+function getlastrunruntimeerror() as Integer
+function objfun(obj as Object, interface as Object, method as String) as Object
+
+' Utility Functions
+function formatjson(obj as Object) as String
+function parsejson(jsonString as String) as Object
+function sleep(milliseconds as Integer)
+function wait(milliseconds as Integer, port as roMessagePort) as Object
+function getinterface(object as Object, name as String) as Object
+function findmemberfunction(object as Object, name as String) as Object
+function uptime(n as Integer) as Float
+function rebootsystem()
+function listdir(path as String) as Object
+function readasciifile(filepath as String) as String
+function writeasciifile(filepath as String, text as String) as Boolean
+function copyfile(source as String, destination as String) as Boolean
+function movefile(source as String, destination as String) as Boolean 
+function matchfiles(path as String, pattern as String) as Object
+function deletefile(filepath as String) as Boolean
+function deletedirectory(dirpath as String) as Boolean
+function createdirectory(dirpath as String) as Boolean
+function formatdrive(drive as String, fsType as String) as Boolean
+function strtoi(s as String) as Integer
+function rungarbagecollector() as Object
+function tr(source as String) as String

@@ -31,7 +31,7 @@ function functions(t) {
 
 function func(t) {
     const ret = t[7]? t[7][3].value : null
-    const statements = t[8].statements
+    const statements = t[8]
 
     return {
         node: t[0].value,
@@ -91,17 +91,8 @@ function xtok(t) {
 }
 
 function statements(t) {
-    const tok = []
-    for (let e of t[0]) {
-        tok.push(e[0], xtok(e[1][0]))
-    }
-    tok.push(t[1])
-    const s = t[0].map(e => e[1][0])
-    return {
-        node: 'statements',
-        statements: s,
-        tokens: tok
-    }
+    const statements = t[0].map(e => e[1][0])
+    return statements
 }
 
 function statement_separators(t) {
@@ -118,7 +109,7 @@ function forloop(t) {
     const start = t[6]
     const to = t[10]
     const step = t[11]? t[11][3] : null
-    const statements = t[12].statements
+    const statements = t[12]
     return {
         node: 'for',
         var: id,
@@ -135,7 +126,7 @@ function foreach(t) {
         node: 'foreach',
         var: t[2],
         in: t[6],
-        statements: t[7].statements,
+        statements: t[7],
 
         tokens: xtok(t)
     }
@@ -144,7 +135,7 @@ function whileloop(t) {
     return {
         node: 'while',
         condition: t[2],
-        statements: t[3].statements,
+        statements: t[3],
 
         tokens: xtok(t)
     }
@@ -203,7 +194,7 @@ function ifst(t) {
     let node = {
         node: 'if',
         condition: condition,
-        then: t[4].statements,
+        then: t[4],
         tokens: xtok(t)
     }
     let last = node
@@ -212,8 +203,8 @@ function ifst(t) {
         last = e
     }
     if (t[6]) {
-        if (t[6][1].statements)
-            last.else = t[6][1].statements
+        if (t[6][1])
+            last.else = t[6][1]
         else
             last.else = []
     }
@@ -223,7 +214,7 @@ function elseif(t) {
     return {
         node: 'if',
         condition: t[1][1],
-        then: t[1][3].statements,
+        then: t[1][3],
         tokens: xtok([t[0], ...t[1]])
     }
 }
@@ -319,8 +310,12 @@ function access(t) {
 }
 function prop(t) {
 //_ "." _ PROP_NAME
-    return { node: 'prop', name: t[3].name,
-        
+    if (!t[3].name) {
+        var err=1
+    }
+    return {
+        node: 'prop',
+        name: t[3].name,
         tokens: xtok(t)
     }
 }
@@ -371,7 +366,7 @@ function constant(t) {
 function name(t) {
     return {
         node: 'name',
-        name: t[0].val,
+        name: t[0].val || t[0].value,
         li: t[0].li,
 
         token: xtok(t[0])
@@ -475,9 +470,11 @@ function declarations(t) {
 }
 function interface(t) {
     return {
+        node: 'interface',
         name: t[2].val,
-        extends: t[3] ? t[3][3].val : null,
-        members: t[4][0].map(a => a[1]),
+        generic: t[3] ? t[3][1] : null,
+        extends: t[4] ? t[4][3].val : null,
+        members: t[5][0].map(a => a[1]),
         li: { line: t[0].line, col: t[0].col }
     }
 }
@@ -486,7 +483,8 @@ function iproperty(t) {
         node: 'property',
         name: t[2].val,
         type: t[6],
-        li: { line: t[0].line, col: t[0].col }
+        readonly: t[0] != null,
+        li: t[2].li
     }
 }
 function ifunction(t) {
@@ -500,9 +498,9 @@ function ifunction(t) {
 }
 function xparam(t) {
     return {
-        nade: 'param',
+        node: 'param',
         name: t[0].val,
-        type: t[4],
+        xtype: t[4],
         li: t[0].li
     }
 }
@@ -517,14 +515,12 @@ function denum(t) {
 function enummember(t) {
     return {
         node: 'case',
-        name: t[0].val,
+        name: t[0].val || t[0].value,
         value: t[1] ? t[1][3][0].val : null,
         li: { line: t[0].line, col: t[0].col }
     }
 }
-function typeList(t) {
-    return [t[1]].concat(t[2].map(a => a[3]))
-}
+
 function namedType(t) {
     let name = t[0].val
     let optional = true
@@ -564,6 +560,20 @@ function tupleType(t) {
         li: { line: t[0].line, col: t[0].col }
     }
 }
+function objType(t) {
+    return {
+        node: 'interface',
+        members: [t[2], ...t[3].map(a => a[1])]
+    }
+}
+function objProp(t) {
+    return {
+        node: 'property',
+        name: t[0].name,
+        type: t[3],
+        li: t[0].li
+    }
+}
 function typedef(t) {
     return {
         node: 'typedef',
@@ -579,6 +589,10 @@ function nonOptional(t) {
         t[1].optional = false
         return t[1]
     }
+}
+function genericType(t) {
+    t[0].generic = t[2]
+    return t[0]
 }
 
 module.exports = {
@@ -635,12 +649,14 @@ module.exports = {
     'xparam': xparam,
     'enum': denum,
     'enummember': enummember,
-    'typeList': typeList,
     'namedType': namedType,
     'arrayType': arrayType,
     'funcType': funcType,
     'tupleType': tupleType,
+    'objType': objType,
+    'objProp': objProp,
     'nonOptional': nonOptional,
+    'genericType': genericType,
     'typedef': typedef
 }
 

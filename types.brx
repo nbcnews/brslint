@@ -1,0 +1,1022 @@
+interface ifAssociativeArray
+    function AddReplace(key as String, value as Object)
+    function Lookup(key as String) as Object
+    function DoesExist(key as String) as Boolean
+    function Delete(key as String) as Boolean
+    function Clear()
+    function Keys() as [String]
+    function Items() as [{ key: String, value: Object }]
+    function SetModeCaseSensitive()
+    function LookupCI(key as String) as Object
+    function Append(aa as Object)
+    function Count() as Integer
+end interface
+
+enum NodeChangeOperation
+    none
+    insert
+    add
+    remove
+    set
+    clear
+    move
+    setall
+    modify
+end enum
+
+interface NodeChangeDetails
+    index1 as Integer
+    index2 as Integer
+    operation as NodeChangeOperation
+end interface
+
+interface Node extends ifAssociativeArray
+    id as String
+    readonly focusedChild as Node
+    focusable as Boolean
+    change as NodeChangeDetails
+    'ifSGNodeDict
+    function findNode(name as String) as Node
+    function subtype() as String
+    function parentSubtype(nodeType as String) as String
+    function isSubtype(nodeType as String) as Boolean
+    function isSameNode(node as Node) as Boolean
+    function clone(isDeepCopy as Boolean) as Node
+    'ifSGNodeChildren
+    function appendChild(child as Node) as Boolean
+    function createChild(nodeType as String) as Node
+    function insertChild(child as Node, index as Integer) as Boolean
+    function removeChild(child as Node) as Boolean
+    function removeChildIndex(index as Integer) as Boolean
+    function replaceChild(newChild as Node, index as Integer) as Boolean
+    function getChild(index as Integer) as Node
+    function getParent() as Node
+    function getChildCount() as Integer
+    function reparent(newParent as Node, adjustTransform as Boolean) as Boolean
+    function appendChildren(child_nodes as [Node]) as Boolean
+    function insertChildren(child_nodes as [Node], index as Integer) as Boolean
+    function removeChildren(child_nodes as [Node]) as Boolean
+    function removeChildrenIndex(num_children as Integer, index as Integer) as Boolean
+    function update(aa as Object)
+    function replaceChildren(child_nodes as [Node], index as Integer) as Boolean
+    function getChildren(num_children as Integer, index as Integer ) as [Node]
+    function createChildren(subtype as String, num_children as Integer ) as [Node]
+    function getScene() as Node
+    'ifSGNodeField
+    function setField(fieldName as FieldName, value as Object) as Boolean
+    function observeField(fieldName as FieldName, functionName as FunctionName) as Boolean
+    'Alt type support required
+    'function observeField(fieldName as String, port as roMessagePort) as Boolean
+    function queueFields(queueNode as Boolean) as Boolean
+    function addFields(fields as Object) as Boolean
+    function getField(fieldName as FieldName) as Object
+    function addField(fieldName as FieldName, type as String, alwayNotify as Boolean) as Boolean
+    function getFieldType(fieldName as FieldName) as String
+    function setFields(fields as Object) as Boolean
+    function removeFields(fieldNames as [FieldName]) as Boolean
+    function unobserveFieldScoped(fieldName as FieldName) as Boolean
+    function removeField(fieldName as FieldName) as Boolean
+    function observeFieldScoped(fieldName as FieldName, functionName as FunctionName) as Boolean
+    'function observeFieldScoped(fieldName as String, port as roMessagePort) as Boolean
+    function unobserveField(fieldName as FieldName) as Boolean
+    function getFields() as Object
+    function hasField(fieldName as FieldName) as Boolean
+    function getFieldTypes() as Object
+    function threadinfo() as ThreadInfo
+    function signalBeacon(beacon as Signal) as SignalResult
+    'ifSGNodeFocus
+    function setFocus(on as Boolean) as Boolean
+    function hasFocus() as Boolean
+    function isInFocusChain() as Boolean
+    'ifSGNodeBoundingRect
+    function boundingRect() as BoundingRect
+    function localBoundingRect() as BoundingRect
+    function sceneBoundingRect() as BoundingRect
+    function ancestorBoundingRect(ancestor as Node) as BoundingRect
+    function localSubBoundingRect(itemnumber as String) as BoundingRect
+    function subBoundingRect(itemnumber as String) as BoundingRect
+    function sceneSubBoundingRect(itemnumber as String) as BoundingRect
+    function ancestorSubBoundingRect(itemnumber as String, ancestor as Node) as BoundingRect
+    'ifSGNodeHttpAgentAccess
+    function getHttpAgent() as Object
+    function setHttpAgent(agent as Object) as Boolean
+end interface
+
+' Can be checked agains function names in scope
+typedef FunctionName = String
+' Can be checked against object's field names
+typedef FieldName    = String
+
+interface ThreadInfo
+    node as NodeInfo
+    currentThread as Thread   
+    renderThread as Thread
+end interface
+
+interface NodeInfo
+    type as String
+    id as String
+    address as Integer
+    willRendezvousFromCurrentThread as String
+    owningThread as Thread
+end interface
+
+interface Thread
+    type as String
+    name as String
+    id as String 
+end interface
+
+enum Signal
+    AppLaunchComplete
+    EPGLaunchIntitiate
+    EPGLaunchComplete
+end enum
+
+enum SignalResult
+    Success = 0         'The event was successfully signaled.
+    NotReady = 1        'The event cannot be fired until after the AppLaunchComplete beacon has been completed.
+    Invalid = 2         'An invalid String was passed into the signalBeacon function.
+    AlreadySignaled = 3 'An event that can only be fired once (AppLaunchComplete) was signaled again.
+    WrongOrder = 4      'The completion event was fired before the corresponding initiate event (for example, EPGLaunchComplete was signaled before EPGLaunchInitiate).
+end enum
+
+interface roMessagePort
+    function WaitMessage(timeout as Integer) as Object
+    function GetMessage() as Object
+    function PeekMessage() as Object
+end interface
+
+interface BoundingRect
+    x as Float
+    y as Float
+    width as Float
+    height as Float
+end interface
+
+interface IHttpAgent
+    function AddHeader(name as String, value as String) as Boolean
+    function SetHeaders(nameValueMap as Object) as Boolean
+    function InitClientCertificates() as Boolean
+    function SetCertificatesFile(path as String) as Boolean
+    function SetCertificatesDepth(depth as Integer)
+    function EnableCookies()
+    function GetCookies(domain as String, path as String) as [Object]
+    function AddCookies(cookies as [Object]) as Boolean
+    function ClearCookies()
+end interface
+
+interface Cookie
+    version as Integer     'Cookie version number
+    domain as String       'Domain to which cookie applies  
+    path as String         'Path to which cookie applies  
+    name as String  
+    value as String
+    expires as IDateTime
+end interface
+
+interface IDateTime
+    function Mark()
+    function ToLocalTime()
+    function GetTimeZoneOffset() as Integer
+    function AsSeconds() as Integer
+    function FromSeconds(numSeconds as Integer)
+    function ToISOString() as String
+    function FromISO8601String(dateString as String)
+    function AsDateString(format as String) as String
+    function AsDateStringNoParam() as String
+    function GetWeekday() as String
+    function GetYear() as Integer
+    function GetMonth() as Integer
+    function GetDayOfMonth() as Integer
+    function GetHours() as Integer
+    function GetMinutes() as Integer
+    function GetSeconds() as Integer
+    function GetMilliseconds() as Integer
+    function GetLastDayOfMonth() as Integer
+    function GetDayOfWeek() as Integer
+end interface
+typedef roDateTime = IDateTime
+
+enum TaskState
+    init
+    run
+    stop
+    done
+end enum
+
+interface Task extends Node
+    functionName as FunctionName
+    control as TaskState
+    readonly state as TaskState
+end interface
+
+enum RenderTracking
+    none
+    partial
+    full
+end enum
+
+enum ChildRenderOrder
+    renderFirst
+    renderLast
+end enum
+
+interface Group extends Node
+    visible as Boolean
+    opacity as Float
+    translation as [Float, Float]
+    rotation as Float
+    scale as [Float, Float]
+    scaleRotateCenter as [Float, Float]
+    childRenderOrder as ChildRenderOrder
+    inheritParentTransform as Boolean
+    inheritParentOpacity as Boolean
+    clippingRect as [Float, Float, Float, Float] 
+    renderPass as Integer
+    muteAudioGuide as Boolean
+    enableRenderTracking as Boolean
+    renderTracking as RenderTracking
+end interface
+
+enum ComponentLoadStatus
+    none
+    loading
+    ready
+    failed
+end enum
+
+interface ComponentLibrary extends Node
+    readonly loadStatus as String
+    uri as String
+end interface
+
+enum StreamFormat
+    mp4
+    wma
+    mp3
+    hls
+    ism
+    dash
+    mkv
+    mka
+    mks
+end enum
+enum AudioCodec
+    aac
+    ac3
+    eac3
+end enum
+
+interface ContentNode extends Node
+    ContentType as String
+    Title as String
+    TitleSeason as String
+    Description as String
+    SDPosterUrl as String
+    HDPosterUrl as String
+    FHDPosterUrl as String
+    ReleaseDate as String
+    Rating as String
+    StarRating as Integer
+    UserStarRating as Integer
+    ShortDescriptionLine1 as String
+    ShortDescriptionLine2 as String
+    EpisodeNumber as String
+    NumEpisodes as Integer
+    Actors as [String]
+    Actors as String
+    Directors as [String]
+    Director as String
+    Categories as [String]
+    Categories as String
+    Album as String
+    Artist as String
+    TextOverlayUL as String
+    TextOverlayUR as String
+    TextOverlayBody as String
+
+    Live as Boolean
+    Url as String
+    SDBifUrl as String
+    HDBifUrl as String
+    FHDBifUrl as String
+    Stream as Object
+    Streams as [Object]
+    StreamBitrates as [Integer]
+    StreamUrls as [String]
+    StreamQualities as [String]
+    StreamContentIDs as [String]
+    StreamStickyHttpRedirects as [Boolean]
+    StreamStartTimeOffset as Integer
+    StreamFormat as StreamFormat
+    Length as Integer 'in sec
+    BookmarkPosition as Integer 'deprecated
+    PlayStart as Integer
+    PlayDuration as Integer 'deprecated
+    ClosedCaptions as Boolean
+    HDBranded as Boolean
+    isHD as Boolean
+    SubtitleColor as String
+    SubtitleConfig as { trackName: String }
+    SubtitleTracks as [{ language: String, description: String, trackName: String }]
+    SubtitleUrl as String
+    VideoDisableUI as Boolean
+    EncodingType as String
+    EncodingKey as String
+    SwitchingStrategy as String
+    Watched as Boolean
+    ForwardQueryStringParams as Boolean
+    IgnoreStreamErrors as Boolean
+    AdaptiveMinStartBitrate as Integer
+    AdaptiveMaxStartBitrate as Integer
+    filterCodecProfiles as Boolean
+    liveBoundsPauseBehavior as String
+    clipStart as Float
+    clipEnd as Float
+    preferredAudioCodec as String
+end interface
+
+interface Scene extends Group
+    backgroundURI as String
+    backgroundColor as Integer
+    backExitsScene as Boolean
+    dialog as Node
+    readonly currentDesignResolution as { width: Integer, height: Integer, resolution: String }
+end interface
+
+interface roDeviceInfo
+    function GetModel() as String
+    function GetModelDisplayName() as String
+    function GetModelType() as String
+    function GetModelDetails() as Object
+    function GetFriendlyName() as String
+    function GetOSVersion() as { major: String, minor: String, build: String }
+    function GetVersion() as String
+    function GetDeviceUniqueId() as String
+    function GetAdvertisingId() as String
+    function GetRIDA() as String
+    function IsAdIdTrackingDisabled() as Boolean
+    function IsRIDADisabled() as Boolean
+    function GetClientTrackingId() as String
+    function GetChannelClientId() as String
+    function GetUserCountryCode() as String
+    function GetRandomUUID() as String
+    function GetTimeZone() as String
+    function HasFeature(feature as String) as Boolean
+    function GetCurrentLocale() as String
+    function GetCountryCode() as String
+    function GetPreferredCaptionLanguage() as String
+    function TimeSinceLastKeypress() as Integer
+    function GetDrmInfo() as Object
+    function GetDrmInfoEx() as Object
+    function GetCaptionsMode() as String
+    function SetCaptionsMode(mode as String) as Boolean
+    function GetCaptionsOption(option as String) as String
+    function GetClockFormat() as String
+    function EnableAppFocusEvent(enable as Boolean) as Object
+    function EnableScreensaverExitedEvent(enable as Boolean) as Object
+    function IsHDMIConnected() as Boolean
+    function EnableLowGeneralMemoryEvent(enabled as Boolean) as Object
+    function GetGeneralMemoryLevel() as String
+    function GetLinkStatus() as Boolean
+    function EnableLinkStatusEvent(enable as Boolean) as Boolean
+    function GetConnectionType() as String
+    function GetExternalIp() as String
+    function GetIPAddrs() as Object
+    function GetConnectionInfo() as Object
+    function GetDisplayType() as String
+    function GetDisplayMode() as String
+    function GetDisplayAspectRatio() as String
+    function GetDisplaySize() as { w: Integer, h: Integer }
+    function GetVideoMode() as String
+    function GetDisplayProperties() as { Width: Integer, Height: Integer, Internal: Boolean, Hdr10: Boolean, DolbyVision: Boolean }
+    function GetSupportedGraphicsResolutions() as [{ width: Integer, height: Integer, name: String, ui: boolean, preferred: Boolean }]
+    function CanDecodeVideo(video_format as Object) as Object
+    function GetUIResolution() as { name: String, width: Integer, height: Integer }
+    function GetGraphicsPlatform() as String
+    function EnableCodecCapChangedEvent(enable as Boolean)
+    function GetAudioOutputChannel() as String
+    function GetAudioDecodeInfo() as Object
+    function CanDecodeAudio(audio_format as Object) as Object
+    function GetSoundEffectsVolume() as Integer
+    function IsAudioGuideEnabled() as Object
+    function EnableAudioGuideChangedEvent(enable as Boolean) as Object
+    function SetMessagePort(port as roMessagePort)
+    function GetMessagePort() as roMessagePort
+end interface
+
+typedef Color = Integer
+typedef Uri = String
+
+interface Dialog extends Group
+    title as String
+    titleColor as color
+    titleFont as Font
+    message as String
+    messageColor as color
+    messageFont as Font
+    numberedBullets as Boolean
+    bulletText as [String]
+    bulletTextColor as color
+    bulletTextFont as Font
+    buttons as [String]
+    buttonGroup as ButtonGroup
+    graphicUri as String
+    graphicWidth as Float
+    graphicHeight as Float
+    readonly buttonSelected as integer
+    readonly buttonFocused as integer
+    focusButton as integer
+    optionsDialog as Boolean
+    backgroundUri as String
+    iconUri as String
+    dividerUri as String
+    close as Boolean
+    wasClosed as Object '?? Event?
+    width as Float
+    maxHeight as Float
+end interface
+
+interface Font extends Node
+    uri as String 
+    size as integer
+    fallbackGlyph as String
+end interface
+
+interface LayoutGroup extends Group
+    layoutDirection as String 'horiz | vert
+    horizAlignment as String
+    vertAlignment as String
+    itemSpacings as [Float]
+    addItemSpacingAfterChild as Boolean
+end interface
+
+interface ButtonGroup extends LayoutGroup
+    textColor as color
+    focusedTextColor as color
+    textFont as Font
+    focusedTextFont as Font
+    focusBitmapUri as uri
+    focusFootprintBitmapUri as uri
+    iconUri as uri
+    focusedIconUri as uri
+    minWidth as Float
+    maxWidth as Float
+    buttonHeight as Float
+    rightJustify as Boolean
+    buttonSelected as integer
+    buttonFocused as integer
+    focusButton as integer
+    buttons as [String]
+end interface
+
+interface TargetGroup extends Group
+    itemComponentName as String
+    content as ContentNode
+    targetSet as TargetSet
+    defaultTargetSetFocusIndex as Integer
+    wrap as Boolean
+    duration as Float
+    showTargetRects as Boolean
+    readonly currFocusItemIndex as Float
+    readonly currTargetSet as TargetSet
+    readonly itemSelected as integer
+    readonly itemFocused as integer
+    readonly itemUnfocused as integer
+    jumpToItem as integer
+    animateToItem as integer
+    animateToTargetSet as TargetSet
+end interface
+
+interface TargetSet extends Node
+    targetRects as [BoundingRect]
+    focusIndex as integer
+    color as Color
+end interface
+
+interface ArrayGrid extends Group
+    content as ContentNode
+    itemSize as [Float,Float]
+    itemSpacing as [Float,Float]
+    numRows as integer
+    numColumns as integer
+    focusRow as integer
+    focusColumn as integer
+    horizFocusAnimationStyle as String
+    vertFocusAnimationStyle as String
+    drawFocusFeedbackOnTop as Boolean
+    drawFocusFeedback as Boolean
+    fadeFocusFeedbackWhenAutoScrolling as Boolean
+    readonly currFocusFeedbackOpacity as Float
+    focusBitmapUri as uri
+    focusFootprintBitmapUri as uri
+    focusBitmapBlendColor as color
+    focusFootprintBlendColor as color
+    wrapDividerBitmapUri as uri
+    wrapDividerWidth as Float
+    wrapDividerHeight as Float
+    fixedLayout as Boolean
+    numRenderPasses as Integer
+    rowHeights as [Float]
+    columnWidths as [Float]
+    rowSpacings as [Float]
+    columnSpacings as [Float]
+    sectionDividerBitmapUri as uri
+    sectionDividerFont as Font
+    sectionDividerTextColor as color
+    sectionDividerSpacing as Float
+    sectionDividerWidth as Float
+    sectionDividerHeight as Float
+    sectionDividerMinWidth as Float
+    sectionDividerLeftOffset as Float
+    itemClippingRect as [Float, Float]
+    readonly itemSelected as integer
+    readonly itemFocused as integer
+    readonly itemUnfocused as integer
+    jumpToItem as integer
+    animateToItem as integer
+    currFocusRow as Float
+    currFocusColumn as Float
+    currFocusSection as Float
+end interface
+
+interface ZoomRowList extends ArrayGrid
+    content as ContentNode
+    itemComponentName as String
+    rowWidth as Float
+    rowHeight as [Float]
+    rowZoomHeight as [Float]
+    spacingAfterRow as Float
+    itemClippingRect as BoundingRect
+    rowItemYOffset as [Float]
+    rowItemZoomYOffset as [Float]
+    rowItemHeight as [Float]
+    rowItemZoomHeight as [Float]
+    rowItemAspectRatio as [Float]
+    spacingAfterRowItem as [Float]
+    useDefaultAspectRatio as [Boolean]
+    wrap as Boolean
+    drawFocusFeedbackOnTop as Boolean
+    drawFocusFeedback as Boolean
+    fadeFocusFeedbackWhenLongPressScrolling as Boolean
+    focusBitmapUri as uri
+    focusBitmapBlendColor as color
+    wrapDividerBitmapUri as uri
+    wrapDividerBitmapBlendColor as color
+    wrapDividerHeight as Float
+    wrapDividerWidth as Float
+    wrapDividerOffset as [Float, Float]
+    showRowTitle as [Boolean]
+    rowTitleOffset as [[Float, Float]]
+    rowTitleFont as Font
+    rowTitleColor as [color]
+    showRowCounter as [Boolean]
+    rowCounterOffset as [[Float, Float]]
+    rowCounterFont as Font
+    rowCounterColor as [color]
+    showRowCounterForShortRows as Boolean 
+    rowDecorationComponentName as String
+    readonly rowSelected as integer
+    readonly rowFocused as Integer
+    readonly rowUnfocused as Integer
+    readonly rowItemSelected as [integer]
+    readonly rowItemFocused as [integer]
+    readonly scrollingStatus as Boolean
+    readonly rowsRendered as [integer]
+    readonly rowItemsRendered as [integer]
+    readonly currFocusRow as Float
+    jumpToRow as integer
+    jumpToRowItem as [integer]
+    animateToRow as integer
+    remainZoomedAboveFocus as String
+    fadeOutAboveFocus as String
+end interface
+
+interface RowList extends ArrayGrid
+    itemComponentName as string
+    rowTitleComponentName as string
+    content as ContentNode
+    itemSize as [Float, Float]
+    itemSpacing as [Float, Float]
+    numRows as integer
+    rowHeights as [Float] 
+    rowSpacings as [Float]
+    rowItemSize as [[Float, Float]]
+    rowItemSpacing as [[Float, Float]]
+    focusXOffset as [Float]
+    rowLabelOffset as [[Float, Float]]
+    showRowLabel as [Boolean]
+    showRowCounter as [Boolean]
+    variableWidthItems as [Boolean]
+    rowFocusAnimationStyle as String
+    vertFocusAnimationStyle as String
+    rowLabelColor as Color
+    rowLabelFont as Font
+    rowCounterRightOffset as Float
+    showRowCounterForShortRows as Boolean
+    fadeFocusFeedbackWhenAutoScrolling as Boolean
+    readonly currFocusFeedbackOpacity as Float
+    drawFocusFeedbackOnTop as Boolean
+    drawFocusFeedback as Boolean
+    imageWellBitmapUri as String
+    focusBitmapUri as String
+    focusFootprintBitmapUri as String
+    focusBitmapBlendColor as Color
+    focusFootprintBlendColor as Color
+    loadingBitmapUri as String
+    loadingBitmapOpacityas as Float
+    failedBitmapUri as String
+    failedBitmapOpacity as Float
+    wrapDividerBitmapUri as String
+    wrapDividerHeight as Float
+    readonly rowItemSelected as [Integer, Integer]
+    readonly rowItemFocused as [Integer, Integer]
+    readonly itemSelected as Integer ' rowSelected
+    readonly itemFocused as Integer
+    readonly itemUnfocused as Integer
+    jumpToItem as Integer 'jumpToRow
+    jumpToRowItem as [Integer, Integer]
+    animateToItem as Integer ' animateToRow
+end interface
+
+interface AnimationBase extends Node
+    control as String ' none | start | stop | pause | resume | finish
+    readonly state as String ' running | paused | stopped
+    repeat as Boolean
+    delay as Float 'in sec
+end interface
+
+interface Animation extends AnimationBase
+    duration as Float
+    easeFunction as String ' linear | inQuad | inCubic ... piecewise
+    easeInPercent as Float
+    easeOutPercent as Float
+    optional as Boolean
+end interface
+
+interface ParallelAnimation extends AnimationBase
+end interface
+
+interface SequentialAnimation extends AnimationBase
+end interface
+
+interface Video extends Group
+    content as ContentNode
+    contentIsPlaylist as Boolean
+    readonly contentIndex as Integer
+    nextContentIndex as Integer
+    control as String 'none,play,stop,pause,resume,replay,prebuffer,skipcontent
+    readonly state as String 'none, buffering, playing, paused, stopped, finished, error
+    readonly errorCode as Integer
+    readonly errorStr as String
+    readonly errorInfo as _VideoErrorInfo
+
+    readonly duration as Float
+    loop as Boolean
+    readonly position as Float
+    notificationInterval as Float
+    seek as Float
+    readonly timedMetaData as Object
+    timedMetaDataSelectionKeys as [String]
+    readonly streamInfo as { isUnderrun: Boolean, isResumed: Boolean, measuredBItrate: Integer, streamBitrate: Integer, streamUrl: String }
+    readonly completedStreamInfo as Object
+    readonly timeToStartStreaming as Float
+    readonly bufferingStatus as  { percentage: Integer, isUnderrun: Boolean }
+    readonly videoFormat as String ' vp9, hevc...
+    readonly pauseBufferStart as Float
+    readonly pauseBufferEnd as Float
+    readonly pauseBufferOverflow as Boolean
+    readonly streamingSegment as { segBitrateBps: Integer, segSequence: integer, segStartTime: Float, segUrl: string }
+    readonly downloadedSegment as _DownloadedSegmentInfo
+    readonly manifestData as { mpd: Object, periods: [Object] }
+
+    width as Float
+    height as Float
+    enableUI as Boolean
+    enableTrickPlay as Boolean
+    bifDisplay as _BifNode
+    trickPlayBar as _TrickPlayBar
+    bufferingBar as _ProgressBar
+    bufferingTextColor as Color
+    retrievingBar as _ProgressBar
+    retrievingTextColor as Color
+
+    globalCaptionMode as String
+    suppressCaptions as Boolean
+    subtitleTrack as String
+    currentSubtitleTrack as String
+    readonly availableSubtitleTracks as [{ description: string, language: string, trackName: string }]
+    captionStyle as Object
+
+    mute as Boolean
+    audioTrack as String
+    readonly currentAudioTrack as String
+    availableAudioTracks as [{ language: string, name: string, track: string }]
+    readonly audioFormat as String
+    supplementaryAudioVolume as Integer
+
+    maxVideoDecodeResolution as [Float,Float]
+    cgms as Integer
+    enableScreenSaverWhilePlaying as Boolean
+    disableScreenSaver as Boolean
+    readonly contentBlocked as Boolean
+end interface
+
+interface _VideoErrorInfo
+    clip_id as integer
+    ignored as integer
+    source as string
+    category as String
+    error_code as integer
+    dbgmsg as string
+    error_attributes as string
+end interface
+
+interface _DownloadedSegmentInfo
+    Status as integer 
+    Sequence as integer 
+    SegUrl as string 
+    DownloadDuration as integer 
+    SegSize as integer
+    SegType as integer
+    BitrateBPS as integer
+end interface
+
+interface _BifNode extends Node
+    frameBgBlendColor as Color
+    frameBgImageUri as String
+    getNearestFrame as Float ' writeonly 
+    readonly nearestFrame as String
+end interface 
+
+interface _TrickPlayBar extends Node
+    currentTimeMarkerBlendColor as Color
+    textColor as Color
+    thumbBlendColor as Color
+    filledBarBlendColor as Color
+    filledBarImageUri as String
+    trackBlendColor as Color
+    trackImageUri as String
+end interface
+
+interface _ProgressBar extends Node
+    width as Float
+    height as Float
+    emptyBarBlendColor as Color
+    emptyBarImageUri as String
+    filledBarBlendColor as Color
+    filledBarImageUri as String
+    trackBlendColor as Color
+    trackImageUri as String
+    percentage as Integer
+end interface
+
+interface Label extends Group
+    text as String
+    color as Color
+    font as Font
+    horizAlign as String
+    vertAlign as String
+    width as Float
+    height as Float
+    numLines as Integer
+    maxLines as Integer
+    wrap as Boolean
+    lineSpacing as Float
+    displayPartialLines as Boolean
+    ellipsizeOnBoundary as Boolean
+    truncateOnDelimiter as String
+    wordBreakChars as String
+    ellipsisText as String
+    readonly isTextEllipsized as Boolean
+end interface
+
+interface Rectangle extends Group
+    width as Float
+    height as Float
+    color as Color
+    blendingEnabled as Boolean
+end interface
+
+interface Timer extends Node
+    control as String ' none, start, stop
+    repeat as Boolean
+    duration as Float
+    fire as Object 'observe
+end interface
+
+interface roRegex
+    function IsMatch(str as String) as Boolean
+    function Match(str as String) as [String]
+    function MatchAll(str as String) as [[String]]
+    function Replace(str as String, replacement as String) as String
+    function ReplaceAll(str as String, replacement as String) as String
+    function Split(str as String) as Object 'roList
+end interface
+
+interface toString
+    function toStr() as String
+end interface
+
+interface roArray
+    function Peek() as Object
+    function Pop() as Object
+    function Push(tvalue as Object)
+    function Shift() as Object
+    function Unshift(tvalue as Object)
+    function Delete(index as Integer) as Boolean
+    function Count() as Integer
+    function Clear()
+    function Append(array as [Object])
+    function GetEntry(index as Integer) as Object
+    function SetEntry(index as Integer, tvalue as Object)
+    function Reset()
+    'function Next() as Object 'need to fix parser to allow reserved keywords in member functions
+    function IsNext() as Boolean
+    function IsEmpty() as Boolean
+    function Join(separator as String) as String
+    function Sort(flags as String)
+    function SortBy(fieldName as String, flags as String)
+    function Reverse()
+end interface
+
+interface roByteArray
+    function Peek() as Object
+    function Pop() as Object
+    function Push(tvalue as Object)
+    function Shift() as Object
+    function Unshift(tvalue as Object)
+    function Delete(index as Integer) as Boolean
+    function Count() as Integer
+    function Clear()
+    function Append(array as [Object])
+    function GetEntry(index as Integer) as Object
+    function SetEntry(index as Integer, tvalue as Object)
+    function Reset()
+    'function Next() as Object 'need to fix parser to allow reserved keywords in member functions
+    function IsNext() as Boolean
+    function IsEmpty() as Boolean
+
+    'function WriteFile(path as String) as Boolean
+    function WriteFile(path as String, start_index as Integer, length as Integer) as Boolean
+    'function ReadFile(path as String) as Boolean
+    function ReadFile(path as String, start_pos as Integer, length as Integer) as Boolean
+    'function AppendFile(path as String) as Boolean
+    function AppendFile(path as String, start_pos as Integer, length as Integer) as Boolean
+    function SetResize(min_size as Integer, auto_resize as Boolean)
+    function ToHexString() as String
+    function FromHexString(hexstring as String)
+    function ToBase64String() as String
+    function FromBase64String(s as String)
+    function ToAsciiString() as String
+    function FromAsciiString(s as String)
+    function GetSignedByte(index as Integer) as Integer
+    function GetSignedLong(index as Integer) as Integer
+    function GetCRC32() as Integer
+    function GetCRC32(start as Integer, length as Integer) as Integer
+    function IsLittleEndianCPU() as Boolean
+end interface
+
+interface roString
+    function GetString() as String
+    'function SetString(value as String)
+    function SetString(s as String, len as Integer)
+    function AppendString(s as String, len as Integer)
+    function Len() as Integer
+    function Left(len as Integer) as String
+    function Right(len as Integer) as String
+    function Mid(start_index as Integer) as String
+    function Mid(start_index as Integer, num_chars as Integer) as String
+    function Instr(substring as String) as Integer
+    function Replace(from as String, with as String) as String
+    function Instr(start_index as Integer, substring as String) as Integer
+    function Trim() as String
+    function ToInt() as Integer
+    function ToFloat() as Float
+    function Tokenize(delim as String) as [String]
+    function Split(separator as String) as [String]
+    function GetEntityEncode() as String
+    function Escape() as String
+    function Unescape() as String
+    function EncodeUri() as String
+    function DecodeUri() as String
+    function ToStr() as String
+end interface
+
+interface roTimespan
+    function Mark()
+    function TotalMilliseconds() as Integer
+    function TotalSeconds() as Integer
+    function GetSecondsToISO8601Date(date as String) as Integer
+end interface
+
+interface roUrlTransfer
+    function GetIdentity() as Integer
+    function SetUrl(url as String)
+    function GetUrl() as String
+    function SetRequest(req as String)
+    function GetRequest() as String
+    function GetToString() as String
+    function GetToFile(filename as String) as Integer
+    function AsyncGetToString() as Boolean
+    function AsyncGetToFile(filename as String) as Boolean
+    function Head() as Object
+    function AsyncHead() as Boolean
+    function PostFromString(request as String) as Integer
+    function PostFromFile(filename as String) as Integer
+    function AsyncPostFromString(request as String) as Boolean
+    function AsyncPostFromFile(filename as String) as Boolean
+    function AsyncPostFromFileToFile(fromFile as String, toFile as String) as Boolean
+    function AsyncCancel() as Boolean
+    function RetainBodyOnError(retain as Boolean) as Boolean
+    function SetUserAndPassword(user as String, password as String) as Boolean
+    function SetMinimumTransferRate(bytes_per_second as Integer, period_in_seconds as Integer) as Boolean
+    function GetFailureReason() as String
+    function EnableEncodings(enable as Boolean) as Boolean
+    function Escape(text as String) as String
+    function Unescape(text as String) as String
+    function UrlEncode(url as String) as String
+    function EnableResume(enable as Boolean) as Boolean
+    function EnablePeerVerification(enable as Boolean) as Boolean
+    function EnableHostVerification(enable as Boolean) as Boolean
+    function EnableFreshConnection(enable as Boolean) as Boolean
+    function SetHttpVersion(version as String)
+
+    function AddHeader(name as String, value as String) as Boolean
+    function SetHeaders(nameValueMap as Object) as Boolean
+    function InitClientCertificates() as Boolean
+    function SetCertificatesFile(path as String) as Boolean
+    function SetCertificatesDepth(depth as Integer)
+    function EnableCookies()
+    function GetCookies(domain as String, path as String) as Object
+    function AddCookies(cookies as Object) as Boolean
+    function ClearCookies()
+
+    function SetMessagePort(port as roMessagePort )
+    function GetMessagePort() as roMessagePort
+end interface
+
+interface roRegistrySection
+    function Read(key as String) as String
+    function ReadMulti(keysArray as [String]) as Object
+    function Write(key as String, value as String) as Boolean
+    function WriteMulti(roAA as Object) as Boolean
+    function Delete(key as String) as Boolean
+    function Exists(key as String) as Boolean
+    function Flush() as Boolean
+    function GetKeyList() as [String]
+end interface
+
+interface Poster extends Group
+    uri as String
+    width as Float
+    height as Float
+    loadSync as Boolean
+    loadWidth as Float
+    loadHeight as Float
+    loadDisplayMode as String
+    readonly loadStatus as ComponentLoadStatus
+    readonly bitmapWidth as Float
+    readonly bitmapHeight as Float
+    readonly bitmapMargins as { left: Integer, right: Integer, top: Integer, bottom: Integer }
+    blendColor as color
+    loadingBitmapUri as String
+    loadingBitmapOpacity as Float
+    failedBitmapUri as String
+    failedBitmapOpacity as Float
+    audioGuideText as String
+end interface
+
+interface roSGNodeEvent<T>
+    function getData() as T
+    function getField() as String
+    function getRoSGNode() as Node
+    function getNode() as Object 'String?
+end interface
+
+interface roAppInfo
+    function GetID() as String
+    function IsDev() as Boolean
+    function GetVersion() as String
+    function GetTitle() as String
+    function GetSubtitle() as String
+    function GetDevID() as String
+    function GetValue(key as String) as String
+end interface
+
+interface roEVPDigest
+    function Setup(digestType as String) as Integer
+    function Reinit() as Integer
+    function Process(bytes as roByteArray) as String
+    function Update(bytes as roByteArray)
+    function Final() as String
+end interface
+
+interface roHMAC
+    function Setup(digestType as String, key as roByteArray) as Integer
+    function Reinit() as Integer
+    function Process(message as roByteArray) as roByteArray
+    function Update(partialMesssage as roByteArray)
+    function Final() as roByteArray
+end interface

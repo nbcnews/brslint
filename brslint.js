@@ -107,7 +107,7 @@ function parseComments(ast) {
         .flatMap(a => a.comments)
         .concat(trailingComments || [])
         .filter(b => b.node === 'codeComment')
-        .map(c => parseCodeComment(c))
+        .map(c => parseCodeComment(c.text, c.li))
     let types = new Map()
     let errors = []
     for (const result of results) {
@@ -133,24 +133,46 @@ function parseDocuComment(func) {
             parser.feed(param.replace(/@param\s*/, ''))
             let xparam = parser.results[0]
             let fparam = func.params.find(a => a.name == xparam.name)
-            fparam.xtype = xparam
+            fparam.xtype = xparam.xtype
         } catch (error) {
+            console.log(error)
+        }
+    }
+
+    const returns = docuComment.text.match(/@returns.*/m)
+    if (returns) {
+        const grammar = Object.assign(Object.create(Object.getPrototypeOf(compiledGrammar)), compiledGrammar, { start: "xtype" })
+        const parser = new nearley.Parser(grammar)
+        try {
+            parser.feed(returns[0].replace(/@returns\s*/, ''))
+            let xtype = parser.results[0]
+            func.type = xtype
+        } catch(error) {
             console.log(error)
         }
     }
 }
 
-function parseCodeComment(codeComment) {
+function parseCodeComment(codeComment, li) {
+    li = li || {line: 0, col: 0}
     // crazy way to clone compiledGrammar 8O
     const grammar = Object.assign(Object.create(Object.getPrototypeOf(compiledGrammar)), compiledGrammar, { start: "xdeclaration" })
     let parser = new nearley.Parser(grammar)
-    parser.feed(codeComment.text)
+    try {
+        parser.feed(codeComment)
+    } catch (error) {
+        const regex = / at line (\d+) col (\d+):\n\n\s*/i
+        let loc = (li.line + error.token.line) + ',' + error.token.col
+        let message = error.message.replace(regex, ': `')
+        message = message.replace(/\n\s*\^\n/, '`. ').replace(/\n/, '')
+        return { errors: [{ level: 0, message: message, loc: loc }] }
+    }
 
     if (parser.results.length > 1) {
         console.log('Ambiguity detected!', parser.results.length)
     } else if (parser.results.length == 0) {
         console.log('Unable to parse input')
-        return { errors: [{level: 1, message: 'Unable to parse code comment', loc: codeComment.li.line }] }
+        return { errors: [{level: 1, message: 'Unable to parse input', loc: li.line }] }
     }
 
     return { ast: parser.results[0], errors: [] }
@@ -184,7 +206,6 @@ module.exports = {
             return { ast: parser.results[0], types: result.types, errors: errors }
         }
         catch (x) {
-            console.log(x)
             const regex = / at line (\d+) col (\d+):\n\n\s*/i
             let loc = x.token.line + ',' + x.token.col
             let message = x.message.replace(regex, ': `')
@@ -192,6 +213,10 @@ module.exports = {
             errors.push({ level: 0, message: message, loc: loc})
             return { errors: errors }
         }
+    },
+
+    parseExtensions: function(source) {
+        return parseCodeComment(source)
     },
 
     check: function (ast, scopedFunctions, globalFunctions) {

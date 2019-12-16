@@ -18,7 +18,7 @@ let lexer = moo.compile({
     comment:    { match: /(?:[ \t]*(?:REM(?![\w!#$%])|').*(?:\r?\n[ \t]*|))+/, lineBreaks: true },
     NL:         { match: /(?:[ \t]*\r?\n[ \t]*)+/, lineBreaks: true },
     ws:         { match: /[ \t]+/ },
-    IDENTIFIER: { match: /[a-zA-Z_][\w]*[$%!#]?/, value: x=>x.toLowerCase(),
+    IDENTIFIER: { match: /[a-zA-Z_][\w]*[$%!#&]?/, value: x=>x.toLowerCase(),
         type: caseInsensitiveKeywords({
             true: ['true'], false: ['false'], invalid: ['invalid'],
             and: ['and'], dim: ['dim'], each: ['each'], else: ['else'], elseif: ['elseif'], end: ['end'], endfunction: ['endfunction'],
@@ -31,7 +31,7 @@ let lexer = moo.compile({
         	longinteger: ['longinteger'], float: ['float'], double: ['double'], string: ['string'], in: ['in'], as: ['as']
         })
     },
-    numberLit:  /\d+%|\d*\.?\d+(?:[edED][+-]?\d+)?[!#&]?|&[hH][0-9ABCDEFabcdef]+/,
+    numberLit:  /\d+[%&]|\d*\.?\d+(?:[edED][+-]?\d+)?[!#]?|&[hH][0-9ABCDEFabcdef]+/,
     stringLit:  /"(?:[^"\n\r]*(?:"")*)*"/,
     op:         /<>|<=|>=|<<|>>|\+=|-=|\*=|\/=|\\=|<<=|>>=/,
     arrow:      /->/,
@@ -50,6 +50,9 @@ const flat = d => {
         }
     }
     return a
+}
+const tailList = (f,l,s) => (d) => {
+    return [d[f]].concat(d[l].map(a=>a[s]))
 }
 
 %}
@@ -150,7 +153,7 @@ endif -> %end __ %if
 
 # space in "else if" below is important! Will error on %elseif
 oneline_if -> %if _ EXPR (_ %then):? _ oneline_statement
-              (_ %else __ oneline_statement):?                                {% ast.oneline_if %}
+              (_ %else __ oneline_statement):?                                 {% ast.oneline_if %}
 
 # enables following "valid" BRS code 
 #   if bool then op()
@@ -161,11 +164,11 @@ statement_list_or_space -> statement_list {% id %} | __ {% id %}
 # end if -------------------
 
 dim_statement -> %dim __ IDENTIFIER _ "[" _ expression_list _ "]"              {% ast.dim %}
-expression_list -> (EXPR _ "," _):* EXPR                                        {% ast.expr_list %}
+expression_list -> (EXPR _ "," _):* EXPR                                       {% ast.expr_list %}
 
 for_loop ->
     %for __ IDENTIFIER _ "=" _ EXPR _ %to _ EXPR (_ %step _ EXPR):? 
-    statement_list end_for                                                      {% ast.for %}
+    statement_list end_for                                                     {% ast.for %}
 end_for -> %end __ %for | %endfor | %next (__ IDENTIFIER):?
 # `endfor :` <- results in error, `next :` is ok :(
 
@@ -175,12 +178,12 @@ for_each ->
 end_for_each -> %end __ %for | %endfor | %next {% id %}
 
 while_loop ->
-    %while _ EXPR statement_list (%end __ %while | %endwhile)               {% ast.while %}
+    %while _ EXPR statement_list (%end __ %while | %endwhile)                  {% ast.while %}
 
 # `exitfor` not allowed, must be `exit for` 
-exit_loop -> %exit __ %while                                                  {% ast.exit %}
+exit_loop -> %exit __ %while                                                   {% ast.exit %}
           | %exitwhile                                                         {% ast.exit %}
-          | %exit __ %for                                                     {% ast.exit %}
+          | %exit __ %for                                                      {% ast.exit %}
 
 return_statement -> %return (_ rval):?                                         {% ast.return %}
 
@@ -193,7 +196,7 @@ goto_label -> IDENTIFIER _ ":"
 goto_statement -> %goto __ IDENTIFIER
 
 print_statement -> print print_items                                            {% ast.print %}
-print -> %print                                                                {% id %}
+print -> %print                                                                 {% id %}
        | "?"                                                                    {% id %}
 print_items -> 
     psep:*                                                                      {% id %} 
@@ -284,11 +287,11 @@ S -> S _ shft_op _ A    {% ast.bop %}
    | A                  {% id %}
 C -> C _ comp_op _ S    {% ast.bop %}
    | S                  {% id %}
-N -> %not _ N          {% ast.uop %}
+N -> %not _ N           {% ast.uop %}
    | C                  {% id %}
-D -> D _ %and _ N      {% ast.bop %}
+D -> D _ %and _ N       {% ast.bop %}
    | N                  {% id %}
-O -> O _ %or _ D       {% ast.bop %}
+O -> O _ %or _ D        {% ast.bop %}
    | D                  {% id %}
 
 # resolve ambiguity in print statment ie `? 1 -1` is it ?(1-1) or ?(1), (-1)
@@ -307,11 +310,11 @@ PS -> PS _ shft_op _ A  {% ast.bop %}
    | PA                 {% id %}
 PC -> PC _ comp_op _ S  {% ast.bop %}
    | PS                 {% id %}
-PN -> %not _ N         {% ast.uop %}
+PN -> %not _ N          {% ast.uop %}
    | PC                 {% id %}
-PD -> PD _ %and _ N    {% ast.bop %}
+PD -> PD _ %and _ N     {% ast.bop %}
    | PN                 {% id %}
-PO -> PO _ %or _ D     {% ast.bop %}
+PO -> PO _ %or _ D      {% ast.bop %}
    | PD                 {% id %}
 ###########
 
@@ -333,6 +336,9 @@ string     -> %stringLit        {% ast.string %}
 constant   -> %true             {% ast.constant %}
 |             %false            {% ast.constant %}
 |             %invalid          {% ast.constant %}
+ANYID      -> IDENTIFIER        {% id %}
+|             constant          {% id %}
+|             RESERVED          {% id %}
 NL         -> comment           {% id %}
             | %NL               {% id %}
 _NL        -> _ | NL:+
@@ -355,46 +361,55 @@ UNRESERVED ->
 #######################################
 # custom extensions (code comments)
 #######################################
-xdeclaration -> ((NL:* | _) (interface | enum | typedef)):* (NL:* | __)           {% ast.declarations %}
+xdeclaration -> ((NL:+ | _) (interface | enum | typedef | func_decl)):* (NL:* | __)           {% ast.declarations %}
 
-interface -> "interface" __ NAME (__ "extends" __ NAME):?
+interface -> "interface" __ NAME ("<" templates ">"):? (__ "extends" __ NAME):?
              interface_members
              "end" __ "interface"                                                 {% ast.interface %}
+
+templates -> IDENTIFIER ("," _ IDENTIFIER):*                                      {% tailList(0, 1, 2) %}
 
 interface_members -> (NL:+ interface_member):* NL:+
 
 interface_member  -> 
-             "property" __ NAME __ "as" __ xtype                                  {% ast.iproperty %}
-|            "function" __ NAME _ "(" xparams ")" (__ "as" __ xtype):?            {% ast.ifunction %}
+            ("readonly" __):? ("property" __):? NAME __ "as" __ xtype             {% ast.iproperty %}
+|           func_decl                                                             {% id %}
 
 xparams ->   _ xparam (_ "," _ xparam):* _                                        {% ast.params %}
 |            _                                                                    {% ast.params %}
 
 xparam -> IDENTIFIER __ "as" __ xtype                                             {% ast.xparam %}                                                 
 
+func_decl -> "function" __ NAME _ "(" xparams ")" (__ "as" __ xtype):?            {% ast.ifunction %}
+
 enum      -> "enum" __ NAME
              enum_members
              "end" __ "enum"                                                      {% ast.enum %}
 
 enum_members -> (NL:+ enum_member):* NL:+
-enum_member  -> NAME (_ "=" _ (string | number)):?                                {% ast.enummember %}
+enum_member  -> ANYID (_ "=" _ (string | number)):?                               {% ast.enummember %}
 
-xtype_list   -> _ xtype (_ "," _ xtype):* _                                       {% ast.typeList %}
-xtype_list2  -> _ xtype (_ "," _ xtype):+ _                                       {% ast.typeList %}
+xtype_list   -> _ xtype ("," _ xtype):* _                                         {% tailList(1, 2, 2) %}
+xtype_list2  -> _ xtype ("," _ xtype):+ _                                         {% tailList(1, 2, 2) %}
 xtype_list0  -> xtype_list {%id%}  | _  {% l([]) %}
 
-xtype       ->  otype                   {%id%}
-|               otype "!"               {% ast.nonOptional %}
-|               func_type               {%id%}
-|               "(" func_type ")" "!"   {% ast.nonOptional %}
+xtype       ->  otype                               {%id%}
+|               otype "!"                           {% ast.nonOptional %}
+|               func_type                           {%id%}
+|               "(" func_type ")" "!"               {% ast.nonOptional %}
+|               named_type "<" xtype_list ">"       {% ast.genericType %}
 
 otype       ->  named_type {%id%} | array_type {%id%} 
-|               tuple_type {%id%}
+|               tuple_type {%id%} | obj_type   {%id%}
 
 named_type  ->  IDENTIFIER                                                        {% ast.namedType %}
 array_type  ->  "[" _ xtype _ "]"                                                 {% ast.arrayType %}
 tuple_type  ->  "[" xtype_list2 "]"                                               {% ast.tupleType %}
 func_type   ->  "(" xtype_list0 ")" _ "->" _ xtype                                {% ast.funcType  %}
+obj_type    ->  "{" __NL obj_prop ((NL | "," __) obj_prop):* __NL "}"             {% ast.objType %}
+obj_prop    ->  PROP_NAME ":" __ xtype                                            {% ast.objProp %}
+
+__NL        -> __ | NL:+
 # void function introduces ambiguity with: (func_type)!
 # () -> void should be used instead
 #func_void   ->  "(" xtype_list0 ")"                                               {% ast.funcType  %}
