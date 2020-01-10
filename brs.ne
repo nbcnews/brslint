@@ -31,7 +31,7 @@ let lexer = moo.compile({
         	longinteger: ['longinteger'], float: ['float'], double: ['double'], string: ['string'], in: ['in'], as: ['as']
         })
     },
-    numberLit:  /\d+[%&]|\d*\.?\d+(?:[edED][+-]?\d+)?[!#]?|&[hH][0-9ABCDEFabcdef]+/,
+    numberLit:  /\d+[%&]|\d*\.?\d+(?:[edED][+-]?\d+)?[!#]?|&[hH][0-9ABCDEFabcdef]+[%&]?/,
     stringLit:  /"(?:[^"\n\r]*(?:"")*)*"/,
     op:         /<>|<=|>=|<<|>>|\+=|-=|\*=|\/=|\\=|<<=|>>=/,
     arrow:      /->/,
@@ -39,8 +39,8 @@ let lexer = moo.compile({
 })
 
 const u = d => d[0][0]
-const l = (s) => (d) => s
-const flat = d => {
+const l = (s) => (d) => s   // return constant value: `l('a')`
+const flat = d => {          // flaten list of tokens and lists
     let a = []
     for (const e of d) {
         if (Array.isArray(e)) {
@@ -54,7 +54,6 @@ const flat = d => {
 const tailList = (f,l,s) => (d) => {
     return [d[f]].concat(d[l].map(a=>a[s]))
 }
-
 %}
 
 @lexer lexer
@@ -367,7 +366,8 @@ interface -> "interface" __ NAME ("<" templates ">"):? (__ "extends" __ NAME):?
              interface_members
              "end" __ "interface"                                                 {% ast.interface %}
 
-templates -> IDENTIFIER ("," _ IDENTIFIER):*                                      {% tailList(0, 1, 2) %}
+templates -> template_param ("," _ template_param):*                              {% tailList(0, 1, 2) %}
+template_param -> IDENTIFIER (_ ":" _ xtype):?                                    {% ast.templateParam %}
 
 interface_members -> (NL:+ interface_member):* NL:+
 
@@ -378,7 +378,7 @@ interface_member  ->
 xparams ->   _ xparam (_ "," _ xparam):* _                                        {% ast.params %}
 |            _                                                                    {% ast.params %}
 
-xparam -> IDENTIFIER __ "as" __ xtype                                             {% ast.xparam %}                                                 
+xparam -> IDENTIFIER "?":? __ "as" __ xtype                                       {% ast.xparam %}                                                 
 
 func_decl -> "function" __ NAME _ "(" xparams ")" (__ "as" __ xtype):?            {% ast.ifunction %}
 
@@ -395,6 +395,7 @@ xtype_list0  -> xtype_list {%id%}  | _  {% l([]) %}
 
 xtype       ->  otype                               {%id%}
 |               otype "!"                           {% ast.nonOptional %}
+|               otype "?"                           {% ast.optional %}
 |               func_type                           {%id%}
 |               "(" func_type ")" "!"               {% ast.nonOptional %}
 |               named_type "<" xtype_list ">"       {% ast.genericType %}

@@ -33,71 +33,81 @@ async function main() {
 
     let start = process.hrtime()
 
+    let errors = []
     const config = (args._[0]) ?
         defaultConfig(args) :
         readConfig(args)
 
     const rules = require('./rules')(config.rules, parseInt(args.warning))
     const xmlFiles = readdir(config, '.xml', args.recursive)
-    const files = readdir(config, '.brs', args.recursive)
+    const brsFiles = readdir(config, '.brs', args.recursive)
     const brxFiles = readdir(config, '.brx', args.recursive)
 
-    if (files.length === 0) {
+    if (brsFiles.length === 0) {
         console.log(color.yellow('Warning') + ": Couldn't find any BrightScript files to lint")
         process.exit(0)
     }
 
-    const componentsByFile = await parseComponentFiles(xmlFiles)
-    const codeByFile = parseBrightScriptFiles(files)
-    const embeddedByFile = parseEmbeddedBrightScript(componentsByFile)
-    const brxByFile = parseBRXFiles(brxFiles)
+    const components = await parseComponentFiles(xmlFiles, errors)
+    const codeByFile = parseBrightScriptFiles(brsFiles, errors)
+    const embeddedByFile = parseEmbeddedBrightScript(components, errors)
+    const brxByFile = parseBRXFiles(brxFiles, errors)
     Object.assign(codeByFile, embeddedByFile)
 
-    resolveComponentFunctions(componentsByFile, codeByFile)
-    resolveInheritedFunctions(componentsByFile)
+    resolveComponentFunctions(components, codeByFile, errors)
+    resolveInheritedFunctions(components)
 
-    typeCheck(componentsByFile, codeByFile, brxByFile)
+    typeCheck(components, codeByFile, brxByFile, errors)
 
-    lintUnscoped(codeByFile, rules)
-    lintComponents(componentsByFile, codeByFile)
+//    lintUnscoped(codeByFile, rules, errors)
+    lintComponentsXml(components, errors)
 
     const processingTime = process.hrtime(start)[0]*1000 + Math.round(process.hrtime(start)[1]/1000000)
 
-    let errorCount = reportErrors(componentsByFile)
-    errorCount += reportErrors(codeByFile)
+    let errorCount = reportErrors(errors)
 
-    console.log("\nProcessed %d files in %dms  =^..^=\n", files.length, processingTime)
+    const totalFiles = brsFiles.length + brxFiles.length + xmlFiles.length
+    console.log("\nProcessed %d files in %dms  =^..^=\n", totalFiles, processingTime)
     process.exit(errorCount > 0 ? 1 : 0)
 }
 
-async function parseComponentFiles(xmlFiles) {
-    let parsedFiles = {}
-    for (const file of xmlFiles) {
+async function parseComponentFiles(xmlFilePaths, errors) {
+    let parsedComponents = []
+    for (const file of xmlFilePaths) {
         const input = fs.readFileSync(file, 'utf8')
         const result = await xlint.parse(input)
 
-        if (result.component || result.errors) {
-            parsedFiles[file] = result
+        if (result.component) {
+            result.file = file
+            parsedComponents.push(result)
+        }
+        if (result.errors) {
+            errors.push(...result.errors.map(a => {
+                a.file = file
+                return a
+            }))
         }
     }
 
-    return parsedFiles
+    return parsedComponents
 }
 
-function parseBrightScriptFiles(files, component) {
+function parseBrightScriptFiles(files, errors) {
     let parsedFiles = {}
     for (const file of files) {
         try {
             const input = fs.readFileSync(file, 'utf8')
             const result = lint.parse(input, { preprocessor: args.preprocessor, debug: args.debug, ast: args.ast })
-            parsedFiles[file] = result
+            if (result.ast) {
+                parsedFiles[file] = result
+            }
+            errors.push(...result.errors.map(a => {
+                a.file = file
+                return a
+            }))
         } catch (error) {
             if (error.code === 'ENOENT' || error.code === 'EACCES') {
-                if (component) {
-                    component.errors.push({ level: 0, message: `Unable to read (${error.code}) ` + file, loc:'1' })
-                } else {
-                    parsedFiles[file] = { errors: [{ level: 0, message: `Unable to read (${error.code}) ` + file, loc:'1' }] }
-                }
+                errors.push({ level: 0, message: `Unable to read (${error.code}) ` + file, loc:'1', file: file })
             } else {
                 console.log(error)
             }
@@ -107,30 +117,42 @@ function parseBrightScriptFiles(files, component) {
     return parsedFiles
 }
 
-function parseEmbeddedBrightScript(components) {
+function parseEmbeddedBrightScript(components, errors) {
     let parsedFiles = {}
 
-    for (const file of Object.keys(components)) {
-        const component = components[file].component
-        if (!component) continue
+    for (const componentEntry of components) {
+        const component = componentEntry.component
         let code = component.scripts.reduce((result, script) => result + (script._ || ""), "")
 
         if (code.length > 0) {
             const result = lint.parse(code, { preprocessor: args.preprocessor, debug: args.debug, ast: args.ast })
-            parsedFiles[file] = result
+            if (result.ast) {
+                parsedFiles[componentEntry.file] = result
+            }
+            errors.push(...result.errors.map(a => {
+                a.file = componentEntry.file
+                return a
+            }))
         }
     }
 
     return parsedFiles
 }
 
-function parseBRXFiles(files) {
-    let parsedFiles = {}
+function parseBRXFiles(files, errors) {
+    let parsedFiles = []
     for (const file of files) {
         try {
             const input = fs.readFileSync(file, 'utf8')
             const result = lint.parseExtensions(input)
-            parsedFiles[file] = result
+            if (result.ast) {
+                result.file = file
+                parsedFiles.push(result)
+            }
+            errors.push(...result.errors.map(a => {
+                a.file = file
+                return a
+            }))
         } catch (error) {
             if (error.code === 'ENOENT' || error.code === 'EACCES') {
                 console.log(`Unable to read (${error.code}) ` + file)
@@ -143,19 +165,18 @@ function parseBRXFiles(files) {
     return parsedFiles
 }
 
-function lintUnscoped(codeFiles, rules) {
+function lintUnscoped(codeFiles, rules, errors) {
     for (const file of Object.keys(codeFiles)) {
         const result = codeFiles[file]
-
-        if (result.ast) {
-            const errors = lint.lint(result.ast, rules)
-            result.errors.push(...errors)
-        }
+        errors.push(...lint.lint(result.ast, rules).map(a => {
+            a.file = file
+            return a
+        }))
     }
 }
 
 function lintComponents(components, codeFiles) {
-    lintComponentsXml(components)
+    lintComponentsXml(components, errors)
 
     // const globalFunctions = new Map()
 
@@ -171,45 +192,51 @@ function lintComponents(components, codeFiles) {
     // }
 }
 
-function lintComponentsXml(components) {
-    for (const file of Object.keys(components)) {
-        const componentEntry = components[file]
-        componentEntry.errors.push(... xlint.lint(componentEntry.component, componentEntry.functions))
+function lintComponentsXml(components, errors) {
+    for (const componentEntry of components) {
+        errors.push(... xlint.lint(componentEntry.component, componentEntry.functions).map(a => {
+            a.file = componentEntry.file
+            return a
+        }))
     }
 }
 
-function resolveComponentFunctions(components, codeFiles) {
-    for (const file of Object.keys(components)) {
-        const componentEntry = components[file]
+function resolveComponentFunctions(components, codeFiles, errors) {
+    for (const componentEntry of components) {
         const component = componentEntry.component
-        if (!component) continue
+        const file = componentEntry.file
 
         const scriptPaths = component.scripts.filter(a => a.uri).map(a => scriptPath(a.uri, pth.dirname(file)))
         const unparsedScripts = scriptPaths.filter(path => !codeFiles[path])
-        const parsedFiles = parseBrightScriptFiles(unparsedScripts, componentEntry)
+        const parsedFiles = parseBrightScriptFiles(unparsedScripts, errors)
         Object.assign(codeFiles, parsedFiles)
 
         if (codeFiles[file]) scriptPaths.push(file)
-        const ast = a => codeFiles[a] ? codeFiles[a].ast : null
-        let asts = scriptPaths.map(path => [ast(path), path])
-        if (asts.filter(a => !a[0]).length > 0) {
+        //const ast = a => codeFiles[a] ? codeFiles[a].ast : null
+        let componentScripts = scriptPaths.map(path => [codeFiles[path], path])
+        if (componentScripts.filter(a => !a[0]).length > 0) {
             componentEntry.functions = new Map()
             continue
         }
 
         let scopedFunctions = new Map()
+        let types = new Map()
+        for (const [script, path] of componentScripts) {
+            types = new Map([...types, ...script.types])
 
-        for (const [ast, path] of asts) {
-            for (const lib of ast.libs) {
+            for (const lib of script.ast.libs) {
                 if (lib.name.toLowerCase() === '"roku_ads.brs"') {
-                    scopedFunctions = new Map([...scopedFunctions, ...Object.entries(require('./roku_ads.json').functions)])
                 }
             }
 
-            for (const func of ast.functions) {
+            for (const func of script.ast.functions) {
                 const lookupName = func.name.toLowerCase()
                 if (scopedFunctions.has(lookupName)) {
-                    codeFiles[path].errors.push({level: 1, message: 'Redefining function `' + func.name + '`', loc: func.tokens[0].line + ',' + func.tokens[0].col})
+                    errors.push({
+                        level: 1, message: `Redefining function '${func.name}'`,
+                        loc: `${func.li.line},${func.li.col}`,
+                        file: path
+                    })
                 } else {
                     func.file = path
                     scopedFunctions.set(lookupName, func)
@@ -218,47 +245,49 @@ function resolveComponentFunctions(components, codeFiles) {
         }
 
         componentEntry.functions = scopedFunctions
+        componentEntry.types = types
     }
 }
 
 function resolveInheritedFunctions(components) {
-    for (const componentEntry of Object.values(components)) {
+    for (const componentEntry of components) {
         copyFunctionsFromBase(components, componentEntry)
     }
 }
 
 function copyFunctionsFromBase(components, componentEntry) {
-    if (!componentEntry.component || !componentEntry.component.extends) return
+    if (!componentEntry.component.extends) return
 
-    const baseEntry = Object.values(components).find(a => a.component.name.toLowerCase() == componentEntry.component.extends.toLowerCase())
-    if (baseEntry && baseEntry.component) {
+    const baseEntry = components.find(a => a.component.name.toLowerCase() == componentEntry.component.extends.toLowerCase())
+    if (baseEntry) {
         copyFunctionsFromBase(components, baseEntry)
         componentEntry.functions = new Map([...baseEntry.functions, ...componentEntry.functions])
     }
 }
 
-function typeCheck(components, codeFiles, brxFiles) {
+function typeCheck(components, codeFiles, brxFiles, errors) {
     let globalTypes = parseInterfaceFile('./types.brx')
     let globalFunctions = parseInterfaceFile('./functions.brx')
 
-    for (const brx of Object.values(brxFiles)) {
-        if (brx.ast) {
-            globalTypes = new Map([...globalTypes, ...statica.typesFromAST(brx.ast)])
-        }
-    }
-
     //component interfaces
-    for (const componentEntry of Object.values(components)) {
+    for (const componentEntry of components) {
         const component = componentEntry.component
-        if (!component) continue
-        globalTypes.set(component.name.toLowerCase(), statica.typeFromComponent(component))
+
+        // check for collisions with global names... maybe
+        const componentFunctions = statica.typesFromAST(componentEntry.functions.values())
+        let scopedFunctions = new Map([...globalFunctions, ...componentFunctions])
+        componentEntry.scopedFunctions = scopedFunctions
+
+        globalTypes.set(component.name.toLowerCase(), statica.typeFromComponent(component, componentFunctions))
     }
 
-    // type check components
-    
-    for (const componentEntry of Object.values(components)) {
+    // types from brx files will override component interfaces with same name
+    for (const brx of brxFiles) {
+        globalTypes = new Map([...globalTypes, ...statica.typesFromAST(brx.ast)])
+    }
+
+    for (const componentEntry of components) {
         const component = componentEntry.component
-        if (!component) continue
 
         if (component.extends) {
             const baseType = globalTypes.get(component.extends.toLowerCase())
@@ -268,24 +297,16 @@ function typeCheck(components, codeFiles, brxFiles) {
             component.base = baseType
         }
 
-        let types = new Map(globalTypes)
-        // scoped types ie. functions and types defined in components
-        for (const code of Object.values(codeFiles)) {
-            types = new Map([...types, ...statica.typesFromAST(code.types.values())])
-        }
-
-        // check for collisions with global names
-        let scopedFunctions = new Map([...globalFunctions, ...statica.typesFromAST(componentEntry.functions.values())])
         for (const type of globalTypes.values()) {
             if (type.extends) {
                 const baseType = globalTypes.get(type.extends.toLowerCase())
                 type.base = baseType
             }
         }
-    
-        componentEntry.types = globalTypes
-        componentEntry.scopedFunctions = scopedFunctions
-        statica.check(componentEntry)
+
+        const types = new Map([...globalTypes, ...statica.typesFromAST(componentEntry.types.values())])
+        componentEntry.types = types
+        errors.push(...statica.check(componentEntry))
     }
 }
 
@@ -339,22 +360,24 @@ function lintGlobalScope(codeFiles) {
     }
 }
 
-function reportErrors(files) {
+function reportErrors(errors) {
     let totalErrors = 0
-    const paths = Object.keys(files).sort(pathSort)
+
+    const gropedByFile = errors.reduce((result, error) => {
+        let group = result.get(error.file) || []
+        group.push(error)
+        result.set(error.file, group)
+        return result
+    }, new Map())
+
+    const paths = [...gropedByFile.keys()].sort(pathSort)
 
     for (const path of paths) {
-        const result = files[path]
         const name = pth.basename(path)
 
-        if (result.errors.length > 0) {
-            if (args.format !== 'robot') {
-                console.log(color.black(name) + ' '.repeat(Math.max(30 - name.length, 1)) + color.blackBright(pth.dirname(path)))
-            }
-
-            totalErrors += showWarnings(result.errors, path)
-        }
-    }
+        console.log(color.black(name) + ' '.repeat(Math.max(30 - name.length, 1)) + color.blackBright(pth.dirname(path)))
+        totalErrors += showWarnings(gropedByFile.get(path), path)
+}
 
     return totalErrors
 }
@@ -429,12 +452,12 @@ function readdir(config, ext, recursive) {
 }
 
 function pathSort(a, b) {
-    const ad = a.split(pth.sep).length
-    const bd = b.split(pth.sep).length
-    if (ad > bd)
-        return 1
-    else if (ad < bd)
-        return -1
+    // const ad = a.split(pth.sep)
+    // const bd = b.split(pth.sep)
+    // if (ad > bd)
+    //     return 1
+    // else if (ad < bd)
+    //     return -1
     return a.localeCompare(b)
 }
 

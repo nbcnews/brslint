@@ -7,7 +7,7 @@ function program(t) {
 }
 
 function libs(t) {
-    t[1].comments = t[0].filter(a => a.node)
+    t[1].comments = (t[0]||[]) .filter(a => a.node)
     let libs = t[2].map(lib => {
         lib[1].comments = lib[0].filter(a => a.node)
         return lib[1]
@@ -39,7 +39,7 @@ function func(t) {
         params: t[5].params,
         return: ret,
         statements: statements,
-
+        li: {line: t[0].line, col: t[0].col},
         tokens: xtok(t)
     }
 }
@@ -75,7 +75,7 @@ function param(t) {
         name: t[0].val,
         type: t[2] ? t[2][3].value : null,
         default: t[1]? t[1][3] : null,
-
+        optional: t[1] !== null,
         tokens: xtok(t)
     }
 }
@@ -344,14 +344,23 @@ function call(t) {
     }
 }
 
-
 function string(t) {
     t = t[0]
     return {node: 'string', val: t.text, li: {line: t.line, col: t.col}, token:t}
 }
 function number(t) {
     t = t[0]
-    return {node: 'number', val: t.text, li: {line: t.line, col: t.col}, token:t}
+    if (m = t.text.match(/^(\d+)([%&])?$/)) {
+        var number = parseInt(m[1])
+        var type = m[2] === '&' ? 'longinteger' : 'integer'
+    } else if (m = t.text.match(/^&h([0-9ABCDEF]+)([%&])?$/i)) {
+        var number = parseInt(m[1], 16)
+        var type = m[2] === '&' ? 'longinteger' : 'integer'
+    } else {
+        var number = parseFloat(t.text.replace(/d/i, 'e'))
+        var type = /[d#]/i.test(t.text) ? 'double' : 'float'
+    }
+    return {node: 'number', number: number, type: type, val: t.text, li: {line: t.line, col: t.col}, token:t}
 }
 function identifier(t) {
     t = t[0]
@@ -500,7 +509,8 @@ function xparam(t) {
     return {
         node: 'param',
         name: t[0].val,
-        xtype: t[4],
+        optional: t[1] !== null,
+        xtype: t[5],
         li: t[0].li
     }
 }
@@ -523,7 +533,7 @@ function enummember(t) {
 
 function namedType(t) {
     let name = t[0].val
-    let optional = true
+    let optional = null
     if (/\!$/.test(name)) {
         optional = false
         name = name.substr(0, name.length - 1)
@@ -590,9 +600,19 @@ function nonOptional(t) {
         return t[1]
     }
 }
+function optional(t) {
+    t[0].optional = true
+    return t[0]
+}
 function genericType(t) {
     t[0].generic = t[2]
     return t[0]
+}
+function templateParam(t) {
+    return {
+        name: t[0],
+        default: t[1] ? t[1][3] : null
+    }
 }
 
 module.exports = {
@@ -656,7 +676,9 @@ module.exports = {
     'objType': objType,
     'objProp': objProp,
     'nonOptional': nonOptional,
+    'optional': optional,
     'genericType': genericType,
+    'templateParam': templateParam,
     'typedef': typedef
 }
 

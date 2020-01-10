@@ -6,30 +6,65 @@ const {
     Function, InterfaceType
 } = require('./types')
 
-class static_a {
+const { DGraph } = require('./dgraph'),
+      { Print } = require('./print')
+
+class Context {
     warnings = []
     vars = new Map()
     calls = []
     returns = []
-    constructor() {
-        this.types = null
+    reads = new Set()
+    xreads = new Set()
+    writes = new Set()
+    lookup = new Map()
+    constructor(component, m) {
+        this.component = component
+        this.types = component.types
+        this.scoped = component.scopedFunctions
+        this.m = m
+
+        //reverse type lookup
+        for (const t of this.types.values()) {
+            if (t instanceof InterfaceType) {
+                for (const member of t.members) {
+                    let e = this.lookup.get(member[0]) || []
+                    e.push({ type: member[1], of: t })
+                    this.lookup.set(member[0], e)
+                }
+            }
+        }
     }
 
     warning(token, message, level) {
         this.warnings.push({level: level || 3, message: message, loc: location(token) })
     }
 
-    check(node, ctx) {
-        for (const param of node.params) {
-            let type = typeFromNode(param.xtype) || makeBasicType(param.type || 'object')
-            ctx.set(param.name.toLowerCase(), type)
+    checkFunction(node, args) {
+        let ctx = new Map()
+        ctx.set('m', this.m) //? clone
+
+        const sig = this.scoped.get(node.name.toLowerCase())
+        if (args) {
+            args.forEach((arg, i) => {
+                ctx.set(node.params[i].name.toLowerCase(), arg)
+            })
+        } else if (sig) {
+            node.params.forEach((param, i) => {
+                ctx.set(param.name.toLowerCase(), this.resolveNamedType(sig.params[i].type))
+            })
+        } else {
+            for (const param of node.params) {
+                let type = typeFromNode(param.xtype) || makeBasicType(param.type || 'object')
+                type = this.resolveNamedType(type)
+                ctx.set(param.name.toLowerCase(), type)
+            }
         }
-        const returnType = makeBasicType(node.return || 'void')
-        ctx.set('return', returnType)
+        this.return = this.resolveNamedType(typeFromNode(node.type)) || makeBasicType(node.return || 'void')
 
         const c = this.checkContext(node.statements, ctx)
-        if (c && returnType != null)
-            this.warning(node.tokens, "not all path return value", 1)
+        if (c && this.return != null)
+            this.warning(node.tokens, "not all paths return value", 1)
         return this.warnings
     }
 
@@ -48,66 +83,87 @@ class static_a {
     }
 
     checkStatement(s, ctx) {
+        if (s.node === 'id') { //function call
+            const type = ctx.get(s.val.toLowerCase()) || this.scoped.get(s.val.toLowerCase())
+            let rtype = this.validateAccess(s, type, ctx)
+            if (rtype[0]) {
+                //this.warning(s, 'discarding return type', 3)
+            }
+        }
         if (s.node === 'dim') {
             let v = {
                 name: s.name.val,
                 type: { type: 'array', dim: s.dimentions, types: [], accessed: false },
             }
             for (let x of s.dimentions) {
-                try {
-                    const type = this.verifyExpr(x, ctx)
-                    if (!type instanceof NumberType) {
-                        //error
-                        this.warning(x.token, 'expecting number')
-                    }
-                } catch (x) {
-                    //error
-                    this.warning(x.token, x.error)
+                const type = this.verifyExpr(x, ctx)
+                if (!type instanceof NumberType) {
+                    this.warning(x.token, 'expecting number')
                 }
             }
             ctx.set(v.name.toLowerCase(), new ArrayType(ObjectType()))
         }
+        if (s.node === '+=' || s.node === '-=' || s.node === '/=' || s.node === '*=' || s.node === '\\=') {
+            let type = ctx.get(s.lval.val.toLowerCase())
+        }
         if (s.node === '=') {
             const declaration = s.lval.node == 'id' && !s.lval.accessors
-            if (this.scoped.get(s.lval.val.toLowerCase())) {
-                //err no global lval
-            }
             let type = ctx.get(s.lval.val.toLowerCase())
             let rtype = this.verifyExpr(s.rval, ctx)
 
             if (declaration) {
+                if (this.scoped.get(s.lval.val.toLowerCase())) {
+                    this.warning(s.lval, `local variable ${s.lval.val} collides with function name`, 1)
+                }
                 if (type && !type.eq(rtype)) {
-                    this.warning(s.lval, 'type missmatch', 3)
+                    this.warning(s.lval, `type missmatch redeclaration ${type} to ${rtype}`, 3)
                 }
                 ctx.set(s.lval.val.toLowerCase(), rtype)
-            } else {
-                if (!type) {
-                    this.warning(s.lval, 'undefined local variable', 1)
-                } else {
-                    let [ltype, tstack] = this.validateAccess(s.lval, type, ctx)
-                    if (tstack.length == 2 && type.name == 'm') {
-                        type.add(s.lval.accessors[0].name, rtype)
-                    }
+                this.vars.set(s.lval.val, rtype)
 
-                    if (!rtype instanceof ltype.constructor) {
+                console.log(`    ${accessorToString(s.lval)} = ${rtype} (${rtype.estimatedType})`)
+            } else {
+                type = type || this.scoped.get(s.lval.val.toLowerCase())
+                if (!type) {
+                    this.warning(s.lval, `undefined local variable ${s.lval.val}`, 1)
+                } else {
+                    let [ltype, tstack] = this.validateAccess(s.lval, type, ctx, true)
+                    if (tstack.length == 2 && type.name == 'm') {
+                        const name = s.lval.accessors[0].name
+                        let comb = Type.aggregate(type.member(name), rtype)
+                        type.add(name, comb)
+                    }
+                    this.reads.add(accessorToString(s.lval, -1))
+                    this.writes.add(accessorToString(s.lval))
+
+                    if (ltype instanceof UndefinedType || ltype instanceof ObjectType ||
+                        (ltype instanceof EnumType && ltype.match(rtype)) ||
+                        (ltype instanceof ArrayType && rtype instanceof TupleType && rtype.types.every(a => a instanceof ltype.elementType.constructor)) ||
+                        (ltype instanceof NumberType && rtype instanceof NumberType) || //consider numbers castable
+                        (ltype.optional && rtype instanceof InvalidType) ||
+                        rtype instanceof ltype.constructor) {
+                        // ok
+                    } else {
                         //type missmatch. strict warning?
-                        this.warning(s.lval, `${s.lval.val} type missmatch `, 3)
+                        this.warning(s.lval, `${s.lval.val} type missmatch expecting ${ltype} got ${rtype}`, 3)
                     }
                 }
             }
         }
         if (s.node == 'if') {
-            try {
-                const ctype = this.verifyExpr(s.condition, ctx)
-                if (!ctype instanceof BooleanType) {
-                    this.warning(s.tokens, `should be bool, got ${ctype}`)
-                }
-            } catch(x) {
-                this.warning(x.token, x.error)
+            const ctype = this.verifyExpr(s.condition, ctx)
+            if (!ctype instanceof BooleanType) {
+                this.warning(s.tokens, `should be bool, got ${ctype}`)
             }
+
+            let rr = this.resolveConditionTypes(s.condition, ctx)
+
             let c1,c2
             if (s.then) {
                 let cpy = new Map(ctx) //Object.assign({}, ctx)
+                if (rr && !rr[0].accessors) {
+                    cpy.set(rr[0].val, rr[1])
+                }
                 c1 = this.checkContext(s.then, cpy)
             }
             if (s.else) {
@@ -137,28 +193,24 @@ class static_a {
         } else if (s.node == 'while') {
             const condition = this.verifyExpr(s.condition, ctx)
             if (!condition instanceof BooleanType) {
-                this.warning(s.condition, `expecting boolean got ${condition.desc()}`, 3)
+                this.warning(s.condition, `expecting boolean got ${condition}`, 3)
             }
             this.checkContext(s.statements, ctx)
         }
         if (s.node == 'return') {
-            try {
-                if (!s.val && !ctx.get('return')) return null
-                if (!s.val && ctx.get('return')) {
-                    this.warning(s.tokens, `return should return ${ctx.get('return')}`, 1)
-                    return null
-                }
+            if (!s.val && !this.return) return null
+            if (!s.val && this.return) {
+                this.warning(s.tokens, `return should return ${this.return}`, 1)
+                return null
+            }
 
-                let t = this.verifyExpr(s.val, ctx)
-                this.returns.push(t)
+            let t = this.verifyExpr(s.val, ctx)
+            this.returns.push(t)
 
-                if (!ctx.get('return')) {
-                    this.warning(s.tokens, `void function returns ${t.desc()}`, 3)
-                } else if (!this.typesComparable(t, ctx.get('return'))) {
-                    this.warning(s.tokens, `return type missmatch ${ctx.get('return')} ${t}`)
-                }
-            } catch (x) {
-                this.warning(x.token, x.error)
+            if (!this.return) {
+                this.warning(s.tokens, `void function returns ${t}`, 3)
+            } else if (!this.typesComparable(t, this.return)) {
+                this.warning(s.tokens, `return type missmatch expecting ${this.return} got ${t}`)
             }
             return null//end execution path
         }
@@ -193,21 +245,76 @@ class static_a {
         return a
     }
 
+    typeOf(expr) {
+        if (expr.node == 'id' && expr.val == 'type') {
+            if (expr.accessors.length > 0) {
+                const arg = expr.accessors[0].args[0]
+                return arg
+            }
+        }
+        return null
+    }
+    resolveConditionTypes(ex, ctx) {
+        switch (ex.node) {
+        case 'bop':
+            if (ex.op == '=') {// || ex.op == '<>') {
+                if (this.typeOf(ex.left)) {
+                    let tr = this.verifyExpr(ex.right, ctx)
+                    if (tr instanceof StringType && tr.value) {
+                        return [this.typeOf(ex.left), this.resolveNamedType(new NamedType(tr.value))]
+                    }
+                } else if (this.typeOf(ex.right)) {
+                    let tl = this.verifyExpr(ex.left, ctx)
+                    if (tl instanceof StringType && tl.value) {
+                        return [this.typeOf(ex.right), this.resolveNamedType(new NamedType(tl.value))]
+                    }
+                }
+                return null
+            }
+            if (ex.op == 'and') {
+                let ll = this.resolveConditionTypes(ex.left, ctx)
+                let rr = this.resolveConditionTypes(ex.right, ctx)
+                if (ll || rr) {
+                    return ll || rr
+                }
+            }
+            if (ex.op == 'or') {
+                let ll = this.resolveConditionTypes(ex.left, ctx)
+                let rr = this.resolveConditionTypes(ex.right, ctx)
+                if (ll || rr) {
+                    //bad
+                    return null
+                }
+            }
+            return null
+        case 'uop':
+            if (ex.op == 'not') {
+                let rr = this.resolveConditionTypes(ex.right, ctx)
+                if (rr) {
+                    //ouch
+                    console.log('unexpected negation of type check')
+                }
+            }
+        }
+        return null
+    }
     verifyExpr(ex, ctx) {
         switch (ex.node) {
         case 'function': //anonimous
-            ctx = new Map()
-            ctx.set('m', new InterfaceType())
-            let context = new static_a()
-            context.types = this.types
-            context.scoped = this.scoped
-            context.check(ex, ctx)
-            let rt = context.returns[0]
+            // let context = new Context(this.types, this.scoped, new InterfaceType())
+            // //should run type cherck after context is built
+            // context.checkFunction(ex)
+            // let rt = context.returns[0]
 
-            // move to typeFromNode
-            const params = ex.params.map(a => typeFromNode(a.xtype) || makeBasicType(a.type || 'object'))
+            // move to typeFromNode?
+            const params = ex.params.map(a => {
+                return {
+                    type: typeFromNode(a.xtype) || makeBasicType(a.type || 'object'),
+                    optional: a.optional
+                }
+            })
             const returnType = typeFromNode(ex.type) || makeBasicType(ex.return || 'void')
-            const funcType = new Function(ex.name, params, returnType, false)
+            const funcType = new Function(ex.name, params, returnType, false, ex)
             return funcType
         case 'array':
             const values = ex.values.map(a => this.verifyExpr(a, ctx))
@@ -216,13 +323,35 @@ class static_a {
             let interfac = new InterfaceType(null, false)
             for (const prop of ex.properties) {
                 const propName = prop.name.toLowerCase().replace(/^"|"$/g, '')
-                interfac.add(propName, this.verifyExpr(prop.value, ctx))
+                const expr = this.verifyExpr(prop.value, ctx)
+                interfac.add(propName, expr)
+                if (expr instanceof Function) {
+                    expr.name = propName
+                }
+            }
+            for (const prop of ex.properties) {
+                if (prop.value.node === 'function') { // or check type of interfac prop?
+                    // reference to local var or named function? ie. node == 'id'
+                    let context = new Context(this.component, interfac)
+                    context.checkFunction(prop.value)
+                    this.warnings.concat(context.warnings)
+                }
             }
             return interfac
         case 'string':
-            return new StringType(ex.val)
+            return new StringType(ex.val.replace(/^"|"$/g, ''))
         case 'number':
-            return new NumberType(Number(ex.val))
+            switch(ex.type) {
+                case 'integer':
+                    return new IntegerType(ex.number)
+                case 'longinteger':
+                    return new LongIntegerType(ex.number)
+                case 'float':
+                    return new FloatType(ex.number)
+                case 'double':
+                    return new DoubleType(ex.number)
+            }
+            return new NumberType(ex.val)
         case 'const':
             return ex.val == 'invalid' ? new InvalidType() : new BooleanType(ex.val)
         case 'bop':
@@ -230,7 +359,7 @@ class static_a {
                 let tl = this.verifyExpr(ex.left, ctx)
                 let tr = this.verifyExpr(ex.right, ctx)
                 if (tl instanceof NumberType && tr instanceof NumberType) {
-                    return new NumberType()
+                    return tl.bop(tr, ex.op)
                 }
                 if (tl instanceof StringType && tr instanceof StringType) {
                     return new StringType()
@@ -239,32 +368,49 @@ class static_a {
                     this.warning(ex.token || ex.tokens, 'unsafe cast of object to number/string', 2)
                     return new ObjectType()
                 }
-                throw { error: `expecting numbers or strings, got ${tl} ${tr}`, token: ex.tokens }
-            } else if (ex.op == '-' || ex.op == '*' || ex.op == '\\' || ex.op == '/' || ex.op == 'mod') {
+                this.warning(ex, `expecting numbers or strings, got ${tl} ${tr}`, 2)
+                return new ObjectType()
+            } else if (ex.op == '-' || ex.op == '*' || ex.op == '\\' || ex.op == '/' 
+                    || ex.op == 'mod' || ex.op == '^' || ex.op == '>>' || ex.op == '<<') {
                 let tl = this.verifyExpr(ex.left, ctx)
                 let tr = this.verifyExpr(ex.right, ctx)
-                if (!tl instanceof NumberType) {
-                    throw { error: 'expecting number got' + tl, token: ex.left.tokens || ex.left.token }
+                if (!(tl instanceof NumberType)) {
+                    this.warning(ex.left, `expecting number got ${tl}`, 2)
                 }
-                if (!tr instanceof NumberType) {
-                    throw { error: 'expecting number, got '+tr, token: ex.right.tokens || ex.right.token}
+                if (!(tr instanceof NumberType)) {
+                    this.warning(ex.right, `expecting number got ${tr}`, 2)
+                }
+                if (tl instanceof NumberType && tr instanceof NumberType) {
+                    return tl.bop(tr, ex.op)
                 }
                 return new NumberType()
-            } else if (ex.op == '=' || ex.op == '<>' || ex.op === '>' || ex.op == '<' || ex.op == '<=' || ex.op == '>=') {
+            } else if (ex.op == '=' || ex.op == '<>') {
                 let tl = this.verifyExpr(ex.left, ctx)
                 let tr = this.verifyExpr(ex.right, ctx)
                 if (this.typesComparable(tl,tr))
                     return new BooleanType()
-                else
-                    throw {error: `type missmatch comparing ${tl} ${tr}`, token: ex.tokens}
+                else {
+                    this.warning(ex, `type missmatch comparing ${tl} ${tr}`, 2)
+                    return new BooleanType()
+                }
+            } else if (ex.op === '>' || ex.op == '<' || ex.op == '<=' || ex.op == '>=') {  
+                let tl = this.verifyExpr(ex.left, ctx)
+                let tr = this.verifyExpr(ex.right, ctx)
+                if (tl instanceof NumberType && tr instanceof NumberType) {
+                    return new BooleanType()
+                }
+                this.warning(ex, `type missmatch comparing ${tl} ${tr}`, 2)
+                return new BooleanType()
             } else if (ex.op == 'and' || ex.op == 'or') {
                 let tl = this.verifyExpr(ex.left, ctx)
                 let tr = this.verifyExpr(ex.right, ctx)
                 if (!tl instanceof BooleanType) {
-                    throw { error: 'expecting bool got ' + tl, token: ex.left.tokens || ex.left.token }
+                    this.warning(ex.left, `expecting boolean got ${tl}`, 2)
+                    return new BooleanType()
                 }
                 if (!tr instanceof BooleanType) {
-                    throw { error: 'expecting bool, got '+tr, token: ex.right.tokens || ex.right.token}
+                    this.warning(ex.right, `expecting boolean got ${tr}`, 2)
+                    return new BooleanType()
                 }
                 if (tl.value && tr.value) {
                     return BooleanType(tl.value && tr.value)
@@ -276,31 +422,33 @@ class static_a {
             if (ex.op == 'not') {
                 let t = this.verifyExpr(ex.right, ctx)
                 if (!t.eq(BooleanType)) {
-                    throw { error: 'expecting boolean got '+t, token: ex.right.tokens }
+                    this.warning(ex.right, `expecting boolean got ${t}`, 2)
+                    return new BooleanType()
                 }
                 return t
             } else if (ex.op == '-') {
                 let t = this.verifyExpr(ex.right, ctx)
                 if (!t instanceof NumberType) {
-                    throw { error: 'expecting number got ' + t, token: ex.right.tokens }
+                    this.warning(ex.right, `expecting number got ${t}`, 2)
+                    return new NumberType()
                 }
                 if (t.value != null) {
                     return new NumberType(-t.value)
                 }
                 return t
             }
-        case 'access':
-            //access validation here
-            let t = this.verifyExpr(ex.expr, ctx)
-            return 'dynamic'
         case 'id':
             const type = this.scoped.get(ex.val.toLowerCase()) || ctx.get(ex.val.toLowerCase())
-            this.vars.set(ex.val, type)
+            this.reads.add(accessorToString(ex))
+            if (ex.val.toLowerCase() == 'm' && !this.writes.has(accessorToString(ex,-1))) {
+                this.xreads.add(accessorToString(ex))
+            }
 
             if (type) {
                 return this.validateAccess(ex, type, ctx)[0]
             } else {
-                throw { error: `undefined variable ${ex.val}`, token: ex.token }
+                this.warning(ex, `undefined variable ${ex.val}`, 1)
+                return new ObjectType()
             }
         }
     }
@@ -309,35 +457,33 @@ class static_a {
         if (!(type instanceof NamedType))
             return type
 
-        const genericParams = type.generic
+        const genericParams = type.generic || []
         const optional = type.optional
         while (type instanceof NamedType) {
             const lookupName = type.name.toLowerCase()
             type = this.types.get(lookupName)
             if (!type) {
-                this.warning(type, `undefined type ${lookupName}, 2`)
-                return new ObjectType()
+                const basic = makeBasicType(lookupName, optional)
+                if (basic) {
+                    return basic
+                } else {
+                    this.warning(type, `undefined type ${lookupName}`, 2)
+                    return new ObjectType()
+                }
             }
         }
 
-        if (type.generic) {
-            let newType = new InterfaceType(type.extends, type.optional)
-            newType.members = new Map(type.members)
-            let genericMap = type.generic.map((a,i)=>[a.val, typeFromNode(genericParams[i])])
-            for (const genericKV of genericMap) {
-                for (const member of newType.members.values()) {
-                    if (member.returnType.name == genericKV[0]) {
-                        member.returnType = genericKV[1]
-                    }
-                }
-            }
-            type = newType
+        if (type.isGeneric()) {
+            let genericMap = type.generics().map((a,i)=>[a.name.val, typeFromNode(genericParams[i] || a.default)])
+            type = type.generize(genericMap)
+            type.genericTypes = genericMap.map(a => a[1])
         }
+
         type.optional = optional
         return type
     }
 
-    validateAccess(node, type, ctx) {
+    validateAccess(node, type, ctx, lval) {
         if (!node.accessors) {
             return [type, [type]]
         }
@@ -345,19 +491,54 @@ class static_a {
         type = this.resolveNamedType(type)
         let typeStack = [type]
         let distype = type
+        let path = node.val
         for (const accessor of node.accessors) {
             switch (accessor.node) {
-            case 'prop': //no prop check yet
+            case 'prop':
+                path += `.${accessor.name}`
                 if (distype instanceof InterfaceType) {
-                    distype = distype.member(accessor.name)
-                    distype = this.resolveNamedType(distype)
-                    if (!distype) {
-                        // warning, not valid property access (or error)
-                        // fallback to object. Make fallback conditional?
-                        distype = new ObjectType()
+                    let distypeHuh = distype.member(accessor.name)
+                    distypeHuh = this.resolveNamedType(distypeHuh)
+                    if (!distypeHuh) {
+                        if (lval == true && typeStack.length == node.accessors.length && typeStack[typeStack.length-1].open) {
+                            distypeHuh = new UndefinedType()
+                        } else {
+                            if (distype.estimatedType) {
+                                distypeHuh = distype.estimatedType.member(accessor.name)
+                                distypeHuh = this.resolveNamedType(distypeHuh)
+                                if (!distypeHuh) {
+                                    distype.estimatedType = null
+                                }
+                            }
+                            let typeOptions = this.lookup.get(accessor.name.toLowerCase())
+                            if (typeOptions) {
+                                typeOptions = typeOptions.filter(a=>a.of.basedOn(distype))
+                                if (typeOptions.length > 0) {
+                                    let aggType = typeOptions.map(a=>a.of).reduce(Type.aggregate)
+                                    if (aggType.subtypeOf(distype)) {
+                                        distype.estimatedType = aggType
+                                        distypeHuh = aggType.member(accessor.name)
+                                        distypeHuh = this.resolveNamedType(distypeHuh)
+                                        console.log(`    estimated type of ${path}: ${aggType}`)
+                                    }
+                                }
+                            }
+
+                            this.warning(accessor, `unexpected property '${accessor.name}' of ${typeStack[typeStack.length-1]}`, 2)
+                            distypeHuh = new ObjectType()
+                        }
                     }
+                    distype = distypeHuh
+
                 } else if (distype.eq(ObjectType)) {
                     // no property check for raw object? use property name to guess?
+                    let typeOptions = this.lookup.get(accessor.name.toLowerCase())
+                    if (typeOptions) {
+                        let aggType = typeOptions.map(a=>a.of).reduce(Type.aggregate)
+                        if (!(aggType instanceof ObjectType)) {
+                            distype.estimatedType = aggType
+                        }
+                    }
                     distype = new ObjectType()
                 } else {
                     if (distype.interface) {
@@ -367,57 +548,69 @@ class static_a {
                             if (member) {
                                 distype = member
                             } else {
-                                this.warning(accessor, `no ${accessor.name} exists on ${distype.desc()}`, 2)
+                                this.warning(accessor, `no ${accessor.name} exists on ${distype}`, 2)
                             }
                         }
                     } else {
-                        // error. no other types allowed property access
-                        // throw?
-                        this.warning(accessor, `type ${distype.desc()} doesn't allow property access (${accessor.name})`, 1)
+                        this.warning(accessor, `type ${distype} doesn't allow property access (${accessor.name})`, 1)
                         distype = new ObjectType()
                     }
                 }
                 break
             case 'call':
+                path += '(...)'
                 distype = this.validateCall(distype, accessor.args, accessor, ctx, typeStack[typeStack.length-2])
                 distype = this.resolveNamedType(distype)
-                this.calls.push({o:typeStack[typeStack.length-2],f:typeStack[typeStack.length-1], a:accessor.args, t:distype})
-                
-                if (!distype) {
-                    distype = new ObjectType()
-                }
+                this.calls.push({o:typeStack[typeStack.length-2],
+                    f:typeStack[typeStack.length-1], a:accessor.args.map(a=>this.verifyExpr(a,ctx)), t:distype})
                 break
             case 'index':
+                path += '[]'
                 if (distype instanceof ArrayType) {
                     if (accessor.indexes.length > 1) {
+                        // multiple indexes are [1,2,3] [1][2][3]
                     }
+                    distype = this.resolveNamedType(distype.elementType)
                 } else if (distype instanceof TupleType) {
                     if (accessor.indexes.length > 1) {
+
                     }
                     const indexType = this.verifyExpr(accessor.indexes[0], ctx)
-                    if (indexType instanceof NumberType && indexType.value) {
+                    if (indexType instanceof IntegerType && indexType.value != null) {
                         distype = distype.types[indexType.value]
+                    } else {
+                        distype = distype.types.reduce(Type.aggregate)
                     }
                 } else if (distype instanceof InterfaceType) {
                     if (accessor.indexes.length > 1) {
                         this.warning(accessor.indexes[1].token, `property access should have only one argument`, 3)
                     }
                     const indexType = this.verifyExpr(accessor.indexes[0], ctx)
-                    if (indexType instanceof StringType) {
-                        if (indexType.value) {
-                            const propType = distype.member(indexType.value.replace(/^"|"$/g, '').toLowerCase())
-                            if (propType) {
-                                distype = propType
+                    if (!(indexType instanceof StringType)) {
+                        this.warning(accessor.indexes[0].token, `expecting string got ${indexType}`, 2)
+                    }
+                    if (indexType instanceof StringType && indexType.value) {
+                        const propType = distype.member(indexType.value.replace(/^"|"$/g, ''))
+                        if (propType) {
+                            distype = propType
+                        } else {
+                            if (distype.name == 'ifAssociativeArray') {
+                                distype = distype.genericTypes[0]
                             } else {
                                 this.warning(accessor.indexes[0].token, `can't find property ${indexType.value}`, 2)
                                 distype = new ObjectType()
                             }
-                        } else {
-                            // warn here?
-                            distype = new ObjectType()
                         }
                     } else {
-                        this.warning(accessor.indexes[0].token, `expecting string got ${indexType.desc()}`, 2)
+                        if (distype.name == 'ifAssociativeArray') {
+                            distype = distype.genericTypes[0].clone()
+                            distype.optional = true
+                        } else if (distype.members.size > 0) {
+                            distype = [...distype.members.values()].reduce(Type.aggregate)
+                            distype.optional = true
+                        } else {
+                            distype = new ObjectType()
+                        }
                     }
                 } else if (distype.eq(ObjectType)) {
                     //simply check index expressions. nothing else can be done here 
@@ -440,6 +633,7 @@ class static_a {
             }
             typeStack.push(distype)
         }
+
         return [distype, typeStack]
     }
 
@@ -454,11 +648,11 @@ class static_a {
                 this.warnings.push( this.warning(node.token, `${name} first argument should be string`))
                 return new ObjectType()
             } else if (arg0.value){
-                const componentName = arg0.value.slice(1, -1).toLowerCase()
+                const componentName = arg0.value.toLowerCase()
                 if (componentName == 'rosgnode') {
                     let arg1 = this.verifyExpr(args[1], ctx)
                     if (arg1 instanceof StringType && arg1.value) {
-                        const nodeType = arg1.value.slice(1, -1).toLowerCase()
+                        const nodeType = arg1.value.toLowerCase()
                         if (! this.types.get(nodeType)) {
                             console.log(`unrecognized node type ${nodeType}`)
                         }
@@ -486,7 +680,7 @@ class static_a {
                 this.warnings.push( this.warning(node.token, `${name} first argument shoul be string`))
                 return new NamedType('Node')
             } else if (arg0.value){
-                const nodeType = arg0.value.slice(1, -1).toLowerCase()
+                const nodeType = arg0.value.toLowerCase()
                 if (! this.types.get(nodeType)) {
                     console.log(`unrecognized node type ${nodeType}`)
                 }
@@ -495,17 +689,17 @@ class static_a {
                 return new NamedType('Node')
             }
         }
-        if (self instanceof InterfaceType && fn.name && fn.name.toLowerCase() == 'findnode') {
+        if (self instanceof InterfaceType && self.basedOn('Node') && fn.name && fn.name.toLowerCase() == 'findnode') {
             if (args.length < 1) {
                 this.warning(node.token, `${fn.name} should have at least one argument`)
                 return new NamedType('Node')
             }
             let arg0 = this.verifyExpr(args[0], ctx)
             if (!arg0.eq(StringType)) {
-                this.warning(node, `${arg0.desc()} first argument of findNode should be string`)
+                this.warning(node, `${arg0} first argument of findNode should be string`)
                 return new NamedType('Node')
             } else if (arg0.value){
-                const nodeId = arg0.value.slice(1, -1).toLowerCase()
+                const nodeId = arg0.value.toLowerCase()
                 if (! self.ids.get(nodeId)) {
                     console.log(`unrecognized node id ${nodeId}`)
                     return new NamedType('Node')
@@ -515,19 +709,89 @@ class static_a {
                 return new NamedType('Node')
             }
         }
-
-        if (fn instanceof Function) {
-            for (let i = 0; i < args.length; i++) {
-                let type = this.verifyExpr(args[i], ctx)
-                if (!type instanceof fn.params[i].constructor) {
-                    this.warning(node.tokens, `expecting ${fn.params[i].desc()} got ${type.desc()}`, 2)
+        if (self instanceof InterfaceType && self.basedOn('Node') && fn.name && (fn.name.toLowerCase() == 'observefield' || fn.name.toLowerCase() == 'observefieldscoped')) {
+            if (args.length !== 2) {
+                this.warning(node.token, `${fn.name} should have two arguments`)
+                return new BooleanType()
+            }
+            let fieldType = null
+            let arg0 = this.verifyExpr(args[0], ctx)
+            if (!arg0.eq(StringType)) {
+                this.warning(node, `${arg0} first argument of ${fn.name} should be a string`)
+            } else if (arg0.value) {
+                fieldType = self.member(arg0.value)
+                if (!fieldType) {
+                    this.warning(node, `Field ${arg0.value} doesn't exist`)
                 }
             }
-            if (args.length < fn.params.length) {
-                this.warning(node.tokens, 'not enough arguments')
+            let arg1 = this.verifyExpr(args[1], ctx)
+            if (arg1.name === 'roMessagePort') return new BooleanType()
+            if (!arg1.eq(StringType)) {
+                this.warning(node, `second argument of ${fn.name} should be a string or roMessagePort`)
+            } else if (arg1.value){
+                const functionName = arg1.value.toLowerCase()
+                const fn = this.scoped.get(functionName)
+                if (!fn) {
+                    this.warning(node, `Function ${arg1.value} doesn't exist in component scope`)
+                } else if (fn.params.length > 1) {
+                    this.warning(node, `Function ${arg1.value} should have zerro or one argument`)
+                } else if (fn.params.length == 1) {
+                    let param = fn.params[0]
+                    if (param.type.eq(ObjectType)) {
+                        let event = new NamedType('roSGNodeEvent')
+                        event.generic = [fieldType, self]
+                        param.type = this.resolveNamedType(event)
+                    }
+                }
+            }
+            return new BooleanType()
+        }
+        if (self instanceof InterfaceType && self.basedOn('Node') && fn.name && fn.name.toLowerCase() == 'callfunc') {
+            if (args.length < 1) {
+                this.warning(node.token, `${fn.name} should have at least one argument`)
+                return new ObjectType()
+            }
+            let arg0 = this.verifyExpr(args[0], ctx)
+            if (!arg0.eq(StringType)) {
+                this.warning(node, `${arg0} first argument of ${fn.name} should be a string`)
+            } else if (arg0.value) {
+                const fn = self.member(arg0.value)
+                if (!fn) {
+                    this.warning(node, `Function ${arg0.value} doesn't exist in ${self}`)
+                    return new ObjectType()
+                } else {
+                    // check args
+                }
+                return fn.returnType
+            }
+            return new ObjectType()
+        }
+
+        if (fn instanceof Function) {
+            const argsTypes = args.map(a => this.verifyExpr(a, ctx))
+            for (const [i, param] of fn.params.entries()) {
+                const paramType = this.resolveNamedType(param.type)
+                const argType = argsTypes[i]
+                if (!argType && !param.optional) {
+                    this.warning(node.tokens, 'not enough arguments', 1)
+                }
+                if (argType && !argType.subtypeOf(paramType)) {
+                    this.warning(args[i], `expecting argument of ${paramType} got ${argType}`, 2)
+                }
             }
             if (args.length > fn.params.length) {
-                this.warning(node.tokens, 'too many arguments')
+                this.warning(node.tokens, 'too many arguments', 3)
+            }
+            if (fn.ast && fn.returnType && argsTypes.length > 0) {
+                this.checkFunction(fn.ast, argsTypes)
+                if (this.returns.length > 0) {
+                    let agg = this.returns.reduce(Type.aggregate)
+                    if (agg.subtypeOf(fn.returnType)) {
+                        console.log(`    ${fn.name}() -> ${fn.returnType} actual ${agg}`)
+                        fn.returnType = agg
+                    }
+                }
+                this.returns = []
             }
             return fn.returnType
         } else if (fn.eq(ObjectType)) {
@@ -536,7 +800,10 @@ class static_a {
                 const t = this.verifyExpr(arg, ctx)
             }
             return new ObjectType()
-        } 
+        } else {
+            this.warning(node, `function call on ${fn}`, 2)
+            return new UndefinedType()
+        }
 
         return fn.return
     }
@@ -550,7 +817,12 @@ class static_a {
             //['boolean','object'] are not
             return t1.every(_ => this.typesComparable(_,t2))
         }
+        if (t1 instanceof UndefinedType || t2 instanceof UndefinedType) {
+            return false
+        }
         return    t1.eq(t2)
+               || (t1 instanceof InvalidType && t2.optional)
+               || (t2 instanceof InvalidType && t1.optional)
                || t1.eq(ObjectType) || t2.eq(ObjectType)
                || (t1 instanceof NumberType && t2 instanceof NumberType)
     }
@@ -564,8 +836,20 @@ function location(t) {
     } else if (t.li) {
         return t.li.line + "," + t.li.col
     } else if (t.token || t.tokens) {
-        location(t.token || t.tokens)
+        return location(t.token || t.tokens)
     }
+}
+
+function accessorToString(node, end) {
+    return node.val +
+    (node.accessors || []).slice(0,end).map(a=>{
+        if (a.node == 'prop')
+            return "." + a.name
+        else if (a.node == 'index')
+            return "[]"
+        else 
+            return "()"
+    }).join('')
 }
 
 function* expression(node) {
@@ -588,7 +872,7 @@ function* expression(node) {
     }
 }
 
-function makeBasicType(typeString, optional) {
+function makeBasicType(typeString) {
     switch (typeString.toLowerCase()) {
         case 'boolean':
             return new BooleanType()
@@ -638,7 +922,7 @@ function makeType(typeString) {
         case 'vector2d':
             return new TupleType([new FloatType(), new FloatType()])
         case 'assocarray':
-            return new ObjectType()
+            return new NamedType('ifAssociativeArray')
         case 'node':
             return new NamedType('node')
         case 'array':
@@ -669,7 +953,7 @@ function makeType(typeString) {
     }
 }
 
-function buildTypeFromComponent(component) {
+function buildTypeFromComponent(component, functions) {
 
     let interface = new InterfaceType(component.extends.toLowerCase(), false)
     interface.name = component.name
@@ -682,9 +966,12 @@ function buildTypeFromComponent(component) {
         interface.ids = new Map(ids)
     }
 
-//    for (const func of component.functions) {
-//        interface.members.set(func[0], new Function(func[0], [new ObjectType()], null))
-//    }
+    for (const func of component.functions) {
+        const fn = functions.get(func[0])
+        if (fn) {
+            interface.members.set(func[0], fn)
+        }
+    }
     return interface
 }
 
@@ -705,25 +992,29 @@ function childIds(xmlNode) {
 
 function typeFromNode(node) {
     if (!node) return null
+    if (node instanceof Type) return node
 
     switch (node.node) {
     case 'tupleType':
         const types = node.typeList.map(a => typeFromNode(a))
         return new TupleType(types, node.optional)
     case 'functionType':
-        const types2 = node.typeList.map(a => typeFromNode(a))
+        const types2 = node.typeList.map(a => { return { type: typeFromNode(a), optional: false }})
         return new Function(node.name, types2, typeFromNode(node.type), node.optional)
     case 'arrayType':
         return new ArrayType(typeFromNode(node.type), node.optional)
     case 'namedType':
-        let type = makeBasicType(node.name, node.optional)
+        let type = makeBasicType(node.name)
         if (!type) {
-            type = new NamedType(node.name, node.optional)
+            type = new NamedType(node.name)
             type.generic = node.generic
+        }
+        if (node.optional !== null) {
+            type.optional = node.optional
         }
         return type
     case 'string':
-        return new StringType(node.val)
+        return new StringType(node.val.replace(/^"|"$/g, ''))
     case 'number':
         return new NumberType(node.val)
     case 'array':
@@ -737,11 +1028,11 @@ function typeFromNode(node) {
         }
         return interface
     case 'interface':
-        let interfacen = new InterfaceType(node.extends, node.optional)
+        let interfacen = new InterfaceType(node.extends, node.optional, false)
         for (const member of node.members) {
             if (member.node == 'function') {
-                const params = member.params.map(a => typeFromNode(a.xtype))
-                const type = new Function(member.name, params, typeFromNode(member.type))
+                const params = member.params.map(a => { return { type: typeFromNode(a.xtype), optional: a.optional }})
+                const type = new Function(member.name, params, typeFromNode(member.type), member.optional)
                 interfacen.members.set(member.name.toLowerCase(), type)
             } else if (member.node == 'property') {
                 const type = typeFromNode(member.type)
@@ -760,64 +1051,68 @@ function typeFromNode(node) {
 
 module.exports = {
     check: (componentEntry) => {
-        let mtype = new InterfaceType()
+        let errors = []
+        let mtype = new InterfaceType('ifAssociativeArray', false, true)
+        mtype.base = componentEntry.types.get('ifassociativearray')
         mtype.name = 'm'
         mtype.members.set('top', componentEntry.types.get(componentEntry.component.name.toLowerCase()))
         mtype.members.set('global', componentEntry.types.get('node'))
-        mtype.optional = false
 
+        let compot = {
+            name: componentEntry.component.name,
+            fn: []
+        }
+
+        console.log(`component ${componentEntry.component.name}`)
+
+        let callz = []
         for (const func of componentEntry.functions.values()) {
-            const checker = new static_a()
-            checker.types = componentEntry.types
-            checker.scoped = componentEntry.scopedFunctions
-    
-            let ctx = new Map()
-            ctx.set('m', mtype)
+            console.log(`  function ${func.name}`)
 
-            //console.log('func ', func.name)
-            let w = checker.check(func, ctx)
+            const context = new Context(componentEntry, mtype)
 
-            if (checker.returns.length < 1) continue
-            const returnType = checker.returns.reduce((previous, current) => {
-                if (previous.eq(current)) {
-                    if (previous.value == current.value) {
-                        return previous
-                    } else {
-                        previous.value = null
-                        return previous
-                    }
-                } else if (previous instanceof InvalidType) {
-                    current.optional = true
-                    return current
-                } else if (current instanceof InvalidType) {
-                    previous.optional = true
-                    return previous
-                } else if (previous instanceof current.constructor) {
-                    return current
-                } else if (current instanceof previous.constructor) {
-                    return previous
-                } else {
-                    err = 1
-                }
+            let w = context.checkFunction(func)
+            let calls = context.calls.filter(a=>!a.o && componentEntry.functions.has(a.f.name.toLowerCase())).map(a => a.f)
+            compot.fn.push({ name: func.name, calls: calls, ast: func })
+            let reads = Array.from(context.reads).filter(a=>a.startsWith('m.'))
+            let writes = Array.from(context.writes).filter(a=>a.startsWith('m.'))
+            for (const p of func.params) {
+                p.out = Array.from(context.writes).filter(a=>a.startsWith(p.name + '.')).length > 0
+            }
+            console.log(`    returns ${context.returns}`)
+            callz.push(...context.calls.filter(a=>a.f.name && componentEntry.functions.has(a.f.name.toLowerCase())))
+        }
+
+        let fns = [...compot.fn.map(a=>{return {name:a.name,ast:a.ast,calls:[...a.calls]}})]
+        while (fns.length > 0) {
+            let mifun = fns.filter(a => a.calls.length == 0)[0]
+            let func = mifun.ast
+            console.log(`  function ${func.name} -- 2`)
+
+            const context = new Context(componentEntry, mtype)
+            context.checkFunction(func)
+            for (const warning of context.warnings) {
+                warning.file = func.file
+                errors.push(warning)
+            }
+
+            fns = fns.filter(a => a.name !== mifun.name)
+            fns.forEach(e => {
+                e.calls = e.calls.filter(a => a.name !== mifun.name)
             })
 
-            let rtxt = ''
-            if (returnType instanceof InterfaceType) {
-                rtxt = (returnType.name||'') + [...returnType.members.entries()].map(b=>{
-                    return '\n   - ' + b[0] + ' as ' + b[1].desc()
-                })
-            } else if (returnType) {
-                rtxt = returnType.desc() + (returnType.value? '('+returnType.value+')' : '')
-            }
-            console.log("***", func.name, rtxt)
-
-            // for (const ww of w) {
-            //     console.log(ww, func.file)
-            // }
+            if (context.returns < 1) continue
+            const returnType = context.returns.reduce(Type.aggregate)
+            let funtype = componentEntry.scopedFunctions.get(mifun.name.toLowerCase())
+            funtype.returnType = returnType
         }
+        const print = new Print()
+        console.log(print.printComponent(componentEntry))
+        //console.log(JSON.stringify(compot))
+        return errors
     },
-    typeFromComponent: (component) => {
-        return buildTypeFromComponent(component)
+    typeFromComponent: (component, functions) => {
+        return buildTypeFromComponent(component, functions)
     },
     typesFromAST: (ast) => {
         let types = new Map()
@@ -834,22 +1129,16 @@ module.exports = {
                     types.set(lookupName, new EnumType(typeAST.cases))
                     break
                 case 'function':
-                    const params = typeAST.params.map(a => typeFromNode(a.xtype) || makeBasicType(a.type || 'object'))
+                case 'sub':
+                    const params = typeAST.params.map(a => { return { type: typeFromNode(a.xtype) || makeBasicType(a.type || 'object'), optional: a.optional }})
                     const returnType = typeFromNode(typeAST.type) || makeBasicType(typeAST.return || 'void')
-                    const funcType = new Function(typeAST.name, params, returnType, false)
+                    const ast = typeAST.statements? typeAST : null
+                    const funcType = new Function(typeAST.name, params, returnType, false, ast)
                     types.set(lookupName, funcType)
                     break
             }
         }
         return types
-    }
-}
-
-class Context {
-    values = new Map()
-
-    add(value) {
-        this.values.set(value.name.toLowerCase(), value)
     }
 }
 

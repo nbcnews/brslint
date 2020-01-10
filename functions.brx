@@ -27,30 +27,30 @@ function chr(n as Integer) as String
 function instr(start as Integer, text as String, substr as String) as Integer
 function left(s as String, n as Integer) as String
 function len(s as String) as Integer
-function mid(s as String, p as Integer, n as Integer) as String
+function mid(s as String, p as Integer, n? as Integer) as String
 function right(s as String, n as Integer) as String
 function str(f as Float) as String
-function stri(value as Integer, radix as Integer) as String
+function stri(value as Integer, radix? as Integer) as String
 function string(n as Integer, s as String) as String
 function stringi(n as Integer, ch as Integer) as String
 'Val(str as String) as Float
 'Val(str as String, radix as Integer) as Integer
-function val(s as String, radix as Integer) as Float
-function substitute(str as String, arg0 as String, arg1 as String, arg2 as String, arg3 as String) as String 
+function val(s as String, radix? as Integer) as Float
+function substitute(str as String, arg0 as String, arg1? as String, arg2? as String, arg3? as String) as String 
 
 ' Runtime Functions
-function CreateObject(componentName as String, arg as Object) as Object
-function type(x as Object) as String
+function CreateObject(componentName as String, arg? as Object) as Object
+function type(x as Object, version? as Integer) as String
 function getglobalaa() as Object
 function box(x as Object) as Object
-function run(file as String) as Object
+function run(file as String, arg1? as Object, arg2? as Object, arg3? as Object, arg4? as Object) as Object
 function eval(script as String) as Object
 function getlastruncompileerror() as Object
 function getlastrunruntimeerror() as Integer
 function objfun(obj as Object, interface as Object, method as String) as Object
 
 ' Utility Functions
-function formatjson(obj as Object) as String
+function formatjson(obj as Object, flags? as Integer) as String
 function parsejson(jsonString as String) as Object
 function sleep(milliseconds as Integer)
 function wait(milliseconds as Integer, port as roMessagePort) as Object
@@ -71,3 +71,5 @@ function formatdrive(drive as String, fsType as String) as Boolean
 function strtoi(s as String) as Integer
 function rungarbagecollector() as Object
 function tr(source as String) as String
+
+function Roku_Ads() as IRokuAds

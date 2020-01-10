@@ -1,16 +1,18 @@
-interface ifAssociativeArray
-    function AddReplace(key as String, value as Object)
-    function Lookup(key as String) as Object
+interface ifAssociativeArray<T: Object>
+    function AddReplace(key as String, value as T)
+    function Lookup(key as String) as T?
     function DoesExist(key as String) as Boolean
     function Delete(key as String) as Boolean
     function Clear()
     function Keys() as [String]
-    function Items() as [{ key: String, value: Object }]
+    function Items() as [{ key: String, value: T }]
     function SetModeCaseSensitive()
-    function LookupCI(key as String) as Object
-    function Append(aa as Object)
+    function LookupCI(key as String) as T?
+    function Append(aa as ifAssociativeArray<T>)
     function Count() as Integer
 end interface
+
+typedef AA = ifAssociativeArray
 
 enum NodeChangeOperation
     none
@@ -30,7 +32,7 @@ interface NodeChangeDetails
     operation as NodeChangeOperation
 end interface
 
-interface Node extends ifAssociativeArray
+interface Node<T: Node>
     id as String
     readonly focusedChild as Node
     focusable as Boolean
@@ -43,47 +45,59 @@ interface Node extends ifAssociativeArray
     function isSameNode(node as Node) as Boolean
     function clone(isDeepCopy as Boolean) as Node
     'ifSGNodeChildren
-    function appendChild(child as Node) as Boolean
-    function createChild(nodeType as String) as Node
-    function insertChild(child as Node, index as Integer) as Boolean
-    function removeChild(child as Node) as Boolean
+    function appendChild(child as T) as Boolean
+    function createChild(nodeType as String) as T
+    function insertChild(child as T, index as Integer) as Boolean
+    function removeChild(child as T) as Boolean
     function removeChildIndex(index as Integer) as Boolean
-    function replaceChild(newChild as Node, index as Integer) as Boolean
-    function getChild(index as Integer) as Node
+    function replaceChild(newChild as T, index as Integer) as Boolean
+    function getChild(index as Integer) as T
     function getParent() as Node
     function getChildCount() as Integer
     function reparent(newParent as Node, adjustTransform as Boolean) as Boolean
-    function appendChildren(child_nodes as [Node]) as Boolean
-    function insertChildren(child_nodes as [Node], index as Integer) as Boolean
-    function removeChildren(child_nodes as [Node]) as Boolean
+    function appendChildren(children as [T]) as Boolean
+    function insertChildren(children as [T], index as Integer) as Boolean
+    function removeChildren(children as [T]) as Boolean
     function removeChildrenIndex(num_children as Integer, index as Integer) as Boolean
     function update(aa as Object)
-    function replaceChildren(child_nodes as [Node], index as Integer) as Boolean
-    function getChildren(num_children as Integer, index as Integer ) as [Node]
-    function createChildren(subtype as String, num_children as Integer ) as [Node]
-    function getScene() as Node
+    function replaceChildren(children as [T], index as Integer) as Boolean
+    function getChildren(num_children as Integer, index as Integer ) as [T]
+    function createChildren(subtype as String, num_children as Integer ) as [T]
+    function getScene() as Scene
     'ifSGNodeField
     function setField(fieldName as FieldName, value as Object) as Boolean
     function observeField(fieldName as FieldName, functionName as FunctionName) as Boolean
     'Alt type support required
     'function observeField(fieldName as String, port as roMessagePort) as Boolean
     function queueFields(queueNode as Boolean) as Boolean
-    function addFields(fields as Object) as Boolean
+    function addFields(fields as AA) as Boolean
     function getField(fieldName as FieldName) as Object
     function addField(fieldName as FieldName, type as String, alwayNotify as Boolean) as Boolean
     function getFieldType(fieldName as FieldName) as String
-    function setFields(fields as Object) as Boolean
+    function setFields(fields as AA) as Boolean
     function removeFields(fieldNames as [FieldName]) as Boolean
     function unobserveFieldScoped(fieldName as FieldName) as Boolean
     function removeField(fieldName as FieldName) as Boolean
     function observeFieldScoped(fieldName as FieldName, functionName as FunctionName) as Boolean
     'function observeFieldScoped(fieldName as String, port as roMessagePort) as Boolean
     function unobserveField(fieldName as FieldName) as Boolean
-    function getFields() as Object
+    function getFields() as AA
     function hasField(fieldName as FieldName) as Boolean
-    function getFieldTypes() as Object
+    function getFieldTypes() as AA<String>
     function threadinfo() as ThreadInfo
     function signalBeacon(beacon as Signal) as SignalResult
+    'ifAssociativeArray = field acces using AA functions
+    function AddReplace(key as String, value as Object)
+    function Lookup(key as String) as Object
+    function DoesExist(key as String) as Boolean
+    function Delete(key as String) as Boolean
+    function Clear()
+    function Keys() as [String]
+    function Items() as [{ key: String, value: Object }]
+    function SetModeCaseSensitive()
+    function LookupCI(key as String) as Object
+    function Append(aa as Object)
+    function Count() as Integer
     'ifSGNodeFocus
     function setFocus(on as Boolean) as Boolean
     function hasFocus() as Boolean
@@ -100,6 +114,8 @@ interface Node extends ifAssociativeArray
     'ifSGNodeHttpAgentAccess
     function getHttpAgent() as Object
     function setHttpAgent(agent as Object) as Boolean
+    'callFunc
+    function CallFunc(name as FunctionName, arg1? as Object) 'can have any amount of args
 end interface
 
 ' Can be checked agains function names in scope
@@ -425,9 +441,9 @@ interface Dialog extends Group
     graphicUri as String
     graphicWidth as Float
     graphicHeight as Float
-    readonly buttonSelected as integer
-    readonly buttonFocused as integer
-    focusButton as integer
+    readonly buttonSelected as Integer
+    readonly buttonFocused as Integer
+    focusButton as Integer
     optionsDialog as Boolean
     backgroundUri as String
     iconUri as String
@@ -440,8 +456,25 @@ end interface
 
 interface Font extends Node
     uri as String 
-    size as integer
+    size as Integer
     fallbackGlyph as String
+end interface
+
+interface Button extends Group
+    text as String
+    textColor as color
+    focusedTextColor as color
+    textFont as Font
+    focusedTextFont as Font
+    focusFootprintBitmapUri as String
+    focusBitmapUri as String
+    iconUri as String
+    focusedIconUri as String
+    minWidth as Float
+    maxWidtha as Float
+    height as Float
+    showFocusFootprint as Boolean
+    buttonSelected as Object
 end interface
 
 interface LayoutGroup extends Group
@@ -465,9 +498,9 @@ interface ButtonGroup extends LayoutGroup
     maxWidth as Float
     buttonHeight as Float
     rightJustify as Boolean
-    buttonSelected as integer
-    buttonFocused as integer
-    focusButton as integer
+    buttonSelected as Integer
+    buttonFocused as Integer
+    focusButton as Integer
     buttons as [String]
 end interface
 
@@ -481,28 +514,35 @@ interface TargetGroup extends Group
     showTargetRects as Boolean
     readonly currFocusItemIndex as Float
     readonly currTargetSet as TargetSet
-    readonly itemSelected as integer
-    readonly itemFocused as integer
-    readonly itemUnfocused as integer
-    jumpToItem as integer
-    animateToItem as integer
+    readonly itemSelected as Integer
+    readonly itemFocused as Integer
+    readonly itemUnfocused as Integer
+    jumpToItem as Integer
+    animateToItem as Integer
     animateToTargetSet as TargetSet
 end interface
 
 interface TargetSet extends Node
     targetRects as [BoundingRect]
-    focusIndex as integer
+    focusIndex as Integer
     color as Color
+end interface
+
+interface TargetList extends TargetGroup
+    focusedTargetSet as [TargetSet]
+    unfocusedTargetSet as TargetSet
+    advanceKey as String ' 'down' keys enum?
+    reverseKey as String ' 'up'
 end interface
 
 interface ArrayGrid extends Group
     content as ContentNode
     itemSize as [Float,Float]
     itemSpacing as [Float,Float]
-    numRows as integer
-    numColumns as integer
-    focusRow as integer
-    focusColumn as integer
+    numRows as Integer
+    numColumns as Integer
+    focusRow as Integer
+    focusColumn as Integer
     horizFocusAnimationStyle as String
     vertFocusAnimationStyle as String
     drawFocusFeedbackOnTop as Boolean
@@ -531,11 +571,11 @@ interface ArrayGrid extends Group
     sectionDividerMinWidth as Float
     sectionDividerLeftOffset as Float
     itemClippingRect as [Float, Float]
-    readonly itemSelected as integer
-    readonly itemFocused as integer
-    readonly itemUnfocused as integer
-    jumpToItem as integer
-    animateToItem as integer
+    readonly itemSelected as Integer
+    readonly itemFocused as Integer
+    readonly itemUnfocused as Integer
+    jumpToItem as Integer
+    animateToItem as Integer
     currFocusRow as Float
     currFocusColumn as Float
     currFocusSection as Float
@@ -577,7 +617,7 @@ interface ZoomRowList extends ArrayGrid
     rowCounterColor as [color]
     showRowCounterForShortRows as Boolean 
     rowDecorationComponentName as String
-    readonly rowSelected as integer
+    readonly rowSelected as Integer
     readonly rowFocused as Integer
     readonly rowUnfocused as Integer
     readonly rowItemSelected as [integer]
@@ -586,20 +626,20 @@ interface ZoomRowList extends ArrayGrid
     readonly rowsRendered as [integer]
     readonly rowItemsRendered as [integer]
     readonly currFocusRow as Float
-    jumpToRow as integer
+    jumpToRow as Integer
     jumpToRowItem as [integer]
-    animateToRow as integer
+    animateToRow as Integer
     remainZoomedAboveFocus as String
     fadeOutAboveFocus as String
 end interface
 
 interface RowList extends ArrayGrid
-    itemComponentName as string
-    rowTitleComponentName as string
+    itemComponentName as String
+    rowTitleComponentName as String
     content as ContentNode
     itemSize as [Float, Float]
     itemSpacing as [Float, Float]
-    numRows as integer
+    numRows as Integer
     rowHeights as [Float] 
     rowSpacings as [Float]
     rowItemSize as [[Float, Float]]
@@ -687,7 +727,7 @@ interface Video extends Group
     readonly pauseBufferStart as Float
     readonly pauseBufferEnd as Float
     readonly pauseBufferOverflow as Boolean
-    readonly streamingSegment as { segBitrateBps: Integer, segSequence: integer, segStartTime: Float, segUrl: string }
+    readonly streamingSegment as { segBitrateBps: Integer, segSequence: Integer, segStartTime: Float, segUrl: String }
     readonly downloadedSegment as _DownloadedSegmentInfo
     readonly manifestData as { mpd: Object, periods: [Object] }
 
@@ -706,13 +746,13 @@ interface Video extends Group
     suppressCaptions as Boolean
     subtitleTrack as String
     currentSubtitleTrack as String
-    readonly availableSubtitleTracks as [{ description: string, language: string, trackName: string }]
+    readonly availableSubtitleTracks as [{ description: String, language: String, trackName: String }]
     captionStyle as Object
 
     mute as Boolean
     audioTrack as String
     readonly currentAudioTrack as String
-    availableAudioTracks as [{ language: string, name: string, track: string }]
+    availableAudioTracks as [{ language: String, name: String, track: String }]
     readonly audioFormat as String
     supplementaryAudioVolume as Integer
 
@@ -724,23 +764,23 @@ interface Video extends Group
 end interface
 
 interface _VideoErrorInfo
-    clip_id as integer
-    ignored as integer
-    source as string
+    clip_id as Integer
+    ignored as Integer
+    source as String
     category as String
-    error_code as integer
-    dbgmsg as string
-    error_attributes as string
+    error_code as Integer
+    dbgmsg as String
+    error_attributes as String
 end interface
 
 interface _DownloadedSegmentInfo
-    Status as integer 
-    Sequence as integer 
-    SegUrl as string 
-    DownloadDuration as integer 
-    SegSize as integer
-    SegType as integer
-    BitrateBPS as integer
+    Status as Integer 
+    Sequence as Integer 
+    SegUrl as String 
+    DownloadDuration as Integer 
+    SegSize as Integer
+    SegType as Integer
+    BitrateBPS as Integer
 end interface
 
 interface _BifNode extends Node
@@ -881,7 +921,7 @@ end interface
 interface roString
     function GetString() as String
     'function SetString(value as String)
-    function SetString(s as String, len as Integer)
+    function SetString(s as String, len? as Integer)
     function AppendString(s as String, len as Integer)
     function Len() as Integer
     function Left(len as Integer) as String
@@ -889,8 +929,8 @@ interface roString
     function Mid(start_index as Integer) as String
     function Mid(start_index as Integer, num_chars as Integer) as String
     function Instr(substring as String) as Integer
+    'function Instr(start_index? as Integer, substring as String) as Integer
     function Replace(from as String, with as String) as String
-    function Instr(start_index as Integer, substring as String) as Integer
     function Trim() as String
     function ToInt() as Integer
     function ToFloat() as Float
@@ -953,8 +993,21 @@ interface roUrlTransfer
     function AddCookies(cookies as Object) as Boolean
     function ClearCookies()
 
+    function SetPort(port as roMessagePort )
+    function GetPort() as roMessagePort
     function SetMessagePort(port as roMessagePort )
     function GetMessagePort() as roMessagePort
+end interface
+
+interface roUrlEvent
+    function GetInt() as Integer
+    function GetResponseCode() as Integer
+    function GetFailureReason() as String
+    function GetString() as String
+    function GetSourceIdentity() as Integer
+    function GetResponseHeaders() as AA<String>
+    function GetTargetIpAddress() as String
+    function GetResponseHeadersArray() as [AA<String>]
 end interface
 
 interface roRegistrySection
@@ -988,10 +1041,57 @@ interface Poster extends Group
     audioGuideText as String
 end interface
 
-interface roSGNodeEvent<T>
+interface ScrollableText extends Group
+    text as String
+    color as Color
+    font as Font
+    width as Float
+    height as Float
+    lineSpacing as Float
+    horizAlign as String
+    vertAlign as String
+    scrollbarTrackBitmapUri as String
+    scrollbarThumbBitmapUri as String
+end interface
+
+interface LabelList extends ArrayGrid
+    content as ContentNode
+    itemSize as [Integer, Integer]
+    itemSpacing as [Integer, Integer]
+    numRows as Integer
+    textHorizAlign  as String ' enum... left, right, center
+    color as Color
+    focusedColor as Color
+    font as Font
+    focusedFont as Font
+    drawFocusFeedback as Boolean
+    drawFocusFeedbackOnTop as Boolean
+    vertFocusAnimationStyle as String 'fixedFocusWrap, FloatingFocus
+    focusRow as Integer
+    focusBitmapUri as String
+    focusFootprintBitmapUri as String
+    focusBitmapBlendColor as Color
+    focusFootprintBlendColor as Color
+    wrapDividerBitmapUri as String
+    wrapDividerHeight as Float
+    sectionDividerBitmapUri as String 
+    sectionDividerFont as Font
+    sectionDividerTextColor as Color
+    sectionDividerSpacing as Float
+    sectionDividerHeight as Float
+    sectionDividerMinWidth as Float
+    sectionDividerLeftOffset as Float
+    readonly itemSelected as Integer
+    readonly itemFocused as Integer
+    readonly itemUnfocused as Integer
+    jumpToItem as Integer 'w/o
+    animateToItem as Integer 'w/o
+end interface
+
+interface roSGNodeEvent<T, U: Node>
     function getData() as T
     function getField() as String
-    function getRoSGNode() as Node
+    function getRoSGNode() as U
     function getNode() as Object 'String?
 end interface
 
@@ -1019,4 +1119,101 @@ interface roHMAC
     function Process(message as roByteArray) as roByteArray
     function Update(partialMesssage as roByteArray)
     function Final() as roByteArray
+end interface
+
+interface IRokuAds
+    function fireTrackingEvents(adStructure as AdInfo, ctx as Object) as Boolean
+    function getAds(msg? as String) as [AdInfo]
+    function showAds(ads as [AdInfo]!, ctx as { start: Integer, total: Integer }, view as Node) as Boolean
+
+    function SetAdUrl(url as String)
+    function GetAdUrl() as String
+    function SetAdPrefs(useRokuAdsAsFallback as Boolean, maxRequests as Integer)
+    function SetAdConstraints(maxHeight as Integer, maxWidth as Integer, maxBitrate as Integer, supportedMimeTypes as Object)
+    function SetAdBreaks(contentLength as Integer, adBreakTimes as Integer)
+    function SetAdExit(enabled as Boolean)
+    function ImportAds(adPodArray as [AdInfo]!)
+    function EnableJITPods(enabled as Boolean)
+    function SetTrackingCallback(callback as (Object, String, Object) -> Void, obj as Object)
+    function SetDebugOutput(enabled as Boolean)
+
+    function enableNielsenDAR(enabled as Boolean)
+    function setNielsenGenre(genre as String)
+    function setNielsenAppId(id as String)
+    function setNielsenProgramId(id as String)
+    function getNielsenContentData() as String
+
+    function enableAdMeasurements(enabled as Boolean)
+    function setContentGenre(genres as String, kidsContent as Boolean)
+    function setContentId(id as String)
+    function setContentLength(length as Integer)
+
+    function constructStitchedStream(contentMetaData as Object, ads as Object) as Object
+    function renderStitchedStream(csasStream as Object, view as Node) as Boolean
+
+    function stitchedAdsInit(adPodArray as [AdInfo]!)
+    function stitchedAdHandledEvent(msg as Object, player as Object) as Object
+
+    function setAdBufferScreenContent(contentMetaData as Object)
+    function enableAdBufferMessaging(enableMsg as Boolean, enableProgressBar as Boolean)
+    function setAdBufferScreenLayer(zOrder as Integer, contentMetaData as Object)
+    function clearAdBufferScreenLayers()
+    function setAdBufferRenderCallback(callback as (Object, String, Object) -> Void, obj as Object, timeout as Integer)
+end interface
+
+interface AdInfo
+    adPods as [IAdPod]
+end interface
+
+interface IAdPod
+    viewed as Boolean
+    renderSequence as String '("preroll" | "midroll" | "postroll")
+    duration as Float ' (in s),
+    renderTime as Float? '(in s),
+    slots as Integer?
+    backfilled as Boolean
+    tracking as [IAdTrackingEvent!]!
+    ads as [IAd!]!
+end interface
+
+interface IAdTrackingEvent
+    event as String
+    url as String
+    triggered as Boolean
+    valid as Boolean?
+    time as Float?
+end interface
+
+interface IAd
+    duration as Float
+    streamFormat as String
+    adServer as String
+    adId as String?
+    adTitle as String?
+    advertiser as String?
+    creativeId as String?
+    creativeAdId as String?
+    clickThrough as String?
+    streams as [IAdStream!]!
+    tracking as [IAdTrackingEvent!]!
+    companionAds as [ICompanionAd!]
+end interface
+
+interface IAdStream
+    url as String
+    bitrate as Integer '(in kbps)
+    width as Integer
+    height as Integer
+    mimeType as String
+    provider as String?
+end interface
+
+interface ICompanionAd
+    url as String
+    width as Integer
+    height as Integer
+    mimeType as String
+    clickThrough as String?
+    provider as String?
+    tracking as [IAdTrackingEvent!]!
 end interface

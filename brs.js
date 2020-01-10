@@ -28,7 +28,7 @@ let lexer = moo.compile({
         	longinteger: ['longinteger'], float: ['float'], double: ['double'], string: ['string'], in: ['in'], as: ['as']
         })
     },
-    numberLit:  /\d+[%&]|\d*\.?\d+(?:[edED][+-]?\d+)?[!#]?|&[hH][0-9ABCDEFabcdef]+/,
+    numberLit:  /\d+[%&]|\d*\.?\d+(?:[edED][+-]?\d+)?[!#]?|&[hH][0-9ABCDEFabcdef]+[%&]?/,
     stringLit:  /"(?:[^"\n\r]*(?:"")*)*"/,
     op:         /<>|<=|>=|<<|>>|\+=|-=|\*=|\/=|\\=|<<=|>>=/,
     arrow:      /->/,
@@ -36,8 +36,8 @@ let lexer = moo.compile({
 })
 
 const u = d => d[0][0]
-const l = (s) => (d) => s
-const flat = d => {
+const l = (s) => (d) => s   // return constant value: `l('a')`
+const flat = d => {          // flaten list of tokens and lists
     let a = []
     for (const e of d) {
         if (Array.isArray(e)) {
@@ -51,7 +51,6 @@ const flat = d => {
 const tailList = (f,l,s) => (d) => {
     return [d[f]].concat(d[l].map(a=>a[s]))
 }
-
 var grammar = {
     Lexer: lexer,
     ParserRules: [
@@ -453,9 +452,13 @@ var grammar = {
     {"name": "interface$ebnf$2", "symbols": [], "postprocess": function(d) {return null;}},
     {"name": "interface", "symbols": [{"literal":"interface"}, "__", "NAME", "interface$ebnf$1", "interface$ebnf$2", "interface_members", {"literal":"end"}, "__", {"literal":"interface"}], "postprocess": ast.interface},
     {"name": "templates$ebnf$1", "symbols": []},
-    {"name": "templates$ebnf$1$subexpression$1", "symbols": [{"literal":","}, "_", "IDENTIFIER"]},
+    {"name": "templates$ebnf$1$subexpression$1", "symbols": [{"literal":","}, "_", "template_param"]},
     {"name": "templates$ebnf$1", "symbols": ["templates$ebnf$1", "templates$ebnf$1$subexpression$1"], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
-    {"name": "templates", "symbols": ["IDENTIFIER", "templates$ebnf$1"], "postprocess": tailList(0, 1, 2)},
+    {"name": "templates", "symbols": ["template_param", "templates$ebnf$1"], "postprocess": tailList(0, 1, 2)},
+    {"name": "template_param$ebnf$1$subexpression$1", "symbols": ["_", {"literal":":"}, "_", "xtype"]},
+    {"name": "template_param$ebnf$1", "symbols": ["template_param$ebnf$1$subexpression$1"], "postprocess": id},
+    {"name": "template_param$ebnf$1", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "template_param", "symbols": ["IDENTIFIER", "template_param$ebnf$1"], "postprocess": ast.templateParam},
     {"name": "interface_members$ebnf$1", "symbols": []},
     {"name": "interface_members$ebnf$1$subexpression$1$ebnf$1", "symbols": ["NL"]},
     {"name": "interface_members$ebnf$1$subexpression$1$ebnf$1", "symbols": ["interface_members$ebnf$1$subexpression$1$ebnf$1", "NL"], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
@@ -477,7 +480,9 @@ var grammar = {
     {"name": "xparams$ebnf$1", "symbols": ["xparams$ebnf$1", "xparams$ebnf$1$subexpression$1"], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
     {"name": "xparams", "symbols": ["_", "xparam", "xparams$ebnf$1", "_"], "postprocess": ast.params},
     {"name": "xparams", "symbols": ["_"], "postprocess": ast.params},
-    {"name": "xparam", "symbols": ["IDENTIFIER", "__", {"literal":"as"}, "__", "xtype"], "postprocess": ast.xparam},
+    {"name": "xparam$ebnf$1", "symbols": [{"literal":"?"}], "postprocess": id},
+    {"name": "xparam$ebnf$1", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "xparam", "symbols": ["IDENTIFIER", "xparam$ebnf$1", "__", {"literal":"as"}, "__", "xtype"], "postprocess": ast.xparam},
     {"name": "func_decl$ebnf$1$subexpression$1", "symbols": ["__", {"literal":"as"}, "__", "xtype"]},
     {"name": "func_decl$ebnf$1", "symbols": ["func_decl$ebnf$1$subexpression$1"], "postprocess": id},
     {"name": "func_decl$ebnf$1", "symbols": [], "postprocess": function(d) {return null;}},
@@ -510,6 +515,7 @@ var grammar = {
     {"name": "xtype_list0", "symbols": ["_"], "postprocess": l([])},
     {"name": "xtype", "symbols": ["otype"], "postprocess": id},
     {"name": "xtype", "symbols": ["otype", {"literal":"!"}], "postprocess": ast.nonOptional},
+    {"name": "xtype", "symbols": ["otype", {"literal":"?"}], "postprocess": ast.optional},
     {"name": "xtype", "symbols": ["func_type"], "postprocess": id},
     {"name": "xtype", "symbols": [{"literal":"("}, "func_type", {"literal":")"}, {"literal":"!"}], "postprocess": ast.nonOptional},
     {"name": "xtype", "symbols": ["named_type", {"literal":"<"}, "xtype_list", {"literal":">"}], "postprocess": ast.genericType},
