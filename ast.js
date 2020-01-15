@@ -221,8 +221,8 @@ function elseif(t) {
 
 function oneline_if(t) {
     const cond = t[2]
-    const then = t[5][0]
-    const els = t[6]? t[6][3][0] : null
+    const then = [t[5][0]]
+    const els = t[6]? [t[6][3][0]] : null
     let tok = xtok(t)
     tok[5] = tok[5][0]
     return {

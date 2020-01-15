@@ -36,35 +36,42 @@ class Context {
         }
     }
 
+    addType(type) {
+        if (type.name.length > 0) {
+            this.component.types.set(type.name.toLowerCase(), type)
+        }
+    }
     warning(token, message, level) {
         this.warnings.push({level: level || 3, message: message, loc: location(token) })
     }
 
-    checkFunction(node, args) {
+    checkFunction(fn, args) {
         let ctx = new Map()
         ctx.set('m', this.m) //? clone
+        const node = fn.ast
 
-        const sig = this.scoped.get(node.name.toLowerCase())
         if (args) {
-            args.forEach((arg, i) => {
-                ctx.set(node.params[i].name.toLowerCase(), arg)
-            })
-        } else if (sig) {
             node.params.forEach((param, i) => {
-                ctx.set(param.name.toLowerCase(), this.resolveNamedType(sig.params[i].type))
+                ctx.set(param.name.toLowerCase(), args[i]? args[i] : this.resolveNamedType(fn.params[i].type))
             })
         } else {
-            for (const param of node.params) {
-                let type = typeFromNode(param.xtype) || makeBasicType(param.type || 'object')
-                type = this.resolveNamedType(type)
-                ctx.set(param.name.toLowerCase(), type)
-            }
+            node.params.forEach((param, i) => {
+                ctx.set(param.name.toLowerCase(), this.resolveNamedType(fn.params[i].type))
+            })
         }
         this.return = this.resolveNamedType(typeFromNode(node.type)) || makeBasicType(node.return || 'void')
 
         const c = this.checkContext(node.statements, ctx)
         if (c && this.return != null)
             this.warning(node.tokens, "not all paths return value", 1)
+        
+        if (this.returns.length > 0) {
+            const rt = this.returns.reduce(Type.aggregate)
+            if (rt instanceof InterfaceType && !rt.name) {
+                rt.name = node.name
+                this.addType(rt)
+            }
+        }
         return this.warnings
     }
 
@@ -120,8 +127,6 @@ class Context {
                 }
                 ctx.set(s.lval.val.toLowerCase(), rtype)
                 this.vars.set(s.lval.val, rtype)
-
-                console.log(`    ${accessorToString(s.lval)} = ${rtype} (${rtype.estimatedType})`)
             } else {
                 type = type || this.scoped.get(s.lval.val.toLowerCase())
                 if (!type) {
@@ -300,6 +305,7 @@ class Context {
     }
     verifyExpr(ex, ctx) {
         switch (ex.node) {
+        case 'sub':
         case 'function': //anonimous
             // let context = new Context(this.types, this.scoped, new InterfaceType())
             // //should run type cherck after context is built
@@ -315,6 +321,10 @@ class Context {
             })
             const returnType = typeFromNode(ex.type) || makeBasicType(ex.return || 'void')
             const funcType = new Function(ex.name, params, returnType, false, ex)
+            ex.xtype = funcType
+            let context = new Context(this.component, ctx.get('m'))
+            context.checkFunction(funcType)
+            this.warnings.concat(context.warnings)
             return funcType
         case 'array':
             const values = ex.values.map(a => this.verifyExpr(a, ctx))
@@ -329,11 +339,11 @@ class Context {
                     expr.name = propName
                 }
             }
-            for (const prop of ex.properties) {
-                if (prop.value.node === 'function') { // or check type of interfac prop?
+            for (const member of interfac.members.values()) {
+                if (member instanceof Function) {
                     // reference to local var or named function? ie. node == 'id'
                     let context = new Context(this.component, interfac)
-                    context.checkFunction(prop.value)
+                    context.checkFunction(member)
                     this.warnings.concat(context.warnings)
                 }
             }
@@ -485,6 +495,7 @@ class Context {
 
     validateAccess(node, type, ctx, lval) {
         if (!node.accessors) {
+            node.xtype = type
             return [type, [type]]
         }
 
@@ -519,7 +530,6 @@ class Context {
                                         distype.estimatedType = aggType
                                         distypeHuh = aggType.member(accessor.name)
                                         distypeHuh = this.resolveNamedType(distypeHuh)
-                                        console.log(`    estimated type of ${path}: ${aggType}`)
                                     }
                                 }
                             }
@@ -535,11 +545,13 @@ class Context {
                     let typeOptions = this.lookup.get(accessor.name.toLowerCase())
                     if (typeOptions) {
                         let aggType = typeOptions.map(a=>a.of).reduce(Type.aggregate)
-                        if (!(aggType instanceof ObjectType)) {
+                        if (aggType instanceof InterfaceType) {
                             distype.estimatedType = aggType
                         }
+                        distype = typeOptions.map(a=>a.type).reduce(Type.aggregate)
+                    } else {
+                        distype = new ObjectType()
                     }
-                    distype = new ObjectType()
                 } else {
                     if (distype.interface) {
                         const inface = this.types.get(distype.interface.toLowerCase())
@@ -634,6 +646,7 @@ class Context {
             typeStack.push(distype)
         }
 
+        node.xtype = distype
         return [distype, typeStack]
     }
 
@@ -656,18 +669,29 @@ class Context {
                         if (! this.types.get(nodeType)) {
                             console.log(`unrecognized node type ${nodeType}`)
                         }
-                        return this.types.get(nodeType) || new NamedType('Node')
+                        const type = this.types.get(nodeType)
+                        if (type) {
+                            const clone = type.clone()
+                            clone.optional = false
+                            return clone
+                        }
+                        return new NamedType('Node', false)
                     } else {
-                        return new NamedType('Node')
+                        return new NamedType('Node', false)
                     }
                 } else {
-                    if (!this.types.get(componentName)) {
+                    const type = this.types.get(componentName)
+                    if (type) {
+                        const clone = type.clone()
+                        clone.optional = false
+                        return clone
+                    } else {
                         console.log(`unrecognized component ${componentName}`)
+                        return new ObjectType(null, false)
                     }
-                    return this.types.get(componentName) || new ObjectType()
                 }
             } else {
-                return new ObjectType()
+                return new ObjectType(null, false)
             }
         }
         if (fn.name && fn.name.toLowerCase() == 'createchild') {
@@ -783,11 +807,10 @@ class Context {
                 this.warning(node.tokens, 'too many arguments', 3)
             }
             if (fn.ast && fn.returnType && argsTypes.length > 0) {
-                this.checkFunction(fn.ast, argsTypes)
+                this.checkFunction(fn, argsTypes)
                 if (this.returns.length > 0) {
                     let agg = this.returns.reduce(Type.aggregate)
                     if (agg.subtypeOf(fn.returnType)) {
-                        console.log(`    ${fn.name}() -> ${fn.returnType} actual ${agg}`)
                         fn.returnType = agg
                     }
                 }
@@ -1067,19 +1090,20 @@ module.exports = {
 
         let callz = []
         for (const func of componentEntry.functions.values()) {
-            console.log(`  function ${func.name}`)
-
             const context = new Context(componentEntry, mtype)
 
-            let w = context.checkFunction(func)
+            const fn = componentEntry.scopedFunctions.get(func.name.toLowerCase())
+            let w = context.checkFunction(fn)
             let calls = context.calls.filter(a=>!a.o && componentEntry.functions.has(a.f.name.toLowerCase())).map(a => a.f)
             compot.fn.push({ name: func.name, calls: calls, ast: func })
             let reads = Array.from(context.reads).filter(a=>a.startsWith('m.'))
             let writes = Array.from(context.writes).filter(a=>a.startsWith('m.'))
+            func.reads = reads
+            func.writes = writes
             for (const p of func.params) {
                 p.out = Array.from(context.writes).filter(a=>a.startsWith(p.name + '.')).length > 0
             }
-            console.log(`    returns ${context.returns}`)
+
             callz.push(...context.calls.filter(a=>a.f.name && componentEntry.functions.has(a.f.name.toLowerCase())))
         }
 
@@ -1087,10 +1111,10 @@ module.exports = {
         while (fns.length > 0) {
             let mifun = fns.filter(a => a.calls.length == 0)[0]
             let func = mifun.ast
-            console.log(`  function ${func.name} -- 2`)
 
             const context = new Context(componentEntry, mtype)
-            context.checkFunction(func)
+            const fn = componentEntry.scopedFunctions.get(func.name.toLowerCase())
+            context.checkFunction(fn)
             for (const warning of context.warnings) {
                 warning.file = func.file
                 errors.push(warning)

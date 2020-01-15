@@ -1088,7 +1088,7 @@ interface LabelList extends ArrayGrid
     animateToItem as Integer 'w/o
 end interface
 
-interface roSGNodeEvent<T, U: Node>
+interface roSGNodeEvent<T: Object, U: Node>
     function getData() as T
     function getField() as String
     function getRoSGNode() as U

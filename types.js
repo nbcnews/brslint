@@ -375,7 +375,8 @@ class InterfaceType extends ObjectType {
     clone() {
         let clone = new InterfaceType(this.extends, this.optional, this.open)
         clone.name = this.name
-        clone.base = this.base
+        clone.base = this.base //clone bast too?
+        clone.generic = this.generic
         clone.members = new Map([...this.members.entries()].map(m => [m[0], m[1].clone()]))
         return clone
     }
@@ -540,7 +541,7 @@ class Function extends ObjectType {
         const same = this.params.every((a,i) => a.type === newTypes[i].type)
         const newReturn = this.returnType ? this.returnType.generize(generics) : null
         if (!same || this.returnType !== newReturn) {
-            return new Function(this.name, newTypes, newReturn, this.optional)
+            return new Function(this.name, newTypes, newReturn, this.optional, this.ast)
         }
         return this
     }
