@@ -368,6 +368,14 @@ class keyword_formatting extends rule(4) {
             case 'stop':
             case 'end':
                 return deNull(this.checkKeyword(node.token))
+            case 'try':
+                return deNull([
+                    ...this.checkKeyword(node.tokens[0]),
+                    ...this.checkKeyword(node.tokens[2]),
+                    ...this.checkKeyword(node.tokens[5])
+                ])
+            case 'throw':
+                return deNull(this.checkKeyword(node.tokens[0]))
         }
     }
 

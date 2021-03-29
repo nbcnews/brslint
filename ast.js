@@ -148,6 +148,21 @@ function whileloop(t) {
     }
 }
 
+function try_st(t) {
+    return {
+        node: 'try',
+        statements: t[1],
+        catch: t[3],
+        catch_statements: t[4]
+    }
+}
+function throw_st(t) {
+    return {
+        node: 'throw',
+        throws: t[2]
+    }
+}
+
 function print(t) {
     return {
         node: 'print',
@@ -466,6 +481,8 @@ module.exports = {
     'for': forloop,
     'foreach': foreach,
     'while': whileloop,
+    'try': try_st,
+    'throw': throw_st,
     'exit': exit,
     'stop': stop,
     'end': end,
