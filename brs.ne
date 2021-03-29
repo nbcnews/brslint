@@ -25,7 +25,7 @@ let lexer = moo.compile({
             endfor: ['endfor'], endif: ['endif'], endsub: ['endsub'], endwhile: ['endwhile'], exit: ['exit'], exitwhile: ['exitwhile'],
             for: ['for'], function: ['function'], goto: ['goto'], if: ['if'], let: ['let'], next: ['next'], not: ['not'], or: ['or'],
             print: ['print'], return: ['return'], step: ['step'], stop: ['stop'], sub: ['sub'], //tab: ['tab'],
-            then: ['then'], to: ['to'], while: ['while'], mod: ['mod'],
+            then: ['then'], to: ['to'], while: ['while'], mod: ['mod'], try: ['try'], catch: ['catch'], endtry: ['endtry'], throw: ['throw'],
             // non reserved keywords can be used as variable names
             library: ['library'], boolean: ['boolean'], object: ['object'], dynamic: ['dynamic'], void: ['void'], integer: ['integer'],
         	longinteger: ['longinteger'], float: ['float'], double: ['double'], string: ['string'], in: ['in'], as: ['as']
@@ -104,6 +104,8 @@ statement ->
 |   for_loop
 |   for_each
 |   while_loop
+|   try_catch
+|   throw
 |   exit_loop
 |   return_statement
 |   stop_statement
@@ -126,6 +128,7 @@ oneline_statement ->
 |   assign_statement
 |   call_statement
 |   print_statement
+|   throw
 
 # if ------------------------
 if_statement -> 
@@ -179,6 +182,12 @@ while_loop ->
 exit_loop -> %exit __ %while                                                  {% ast.exit %}
           | %exitwhile                                                         {% ast.exit %}
           | %exit __ %for                                                     {% ast.exit %}
+
+try_catch ->
+    %try statement_list %catch (__ IDENTIFIER):? statement_list end_try         {% ast.try %}
+end_try -> %end __ %try | %endtry
+
+throw -> %throw __ (string | object_literal | IDENTIFIER access_or_call:*)      {% ast.throw %}
 
 return_statement -> %return (_ rval):?                                         {% ast.return %}
 
@@ -343,7 +352,8 @@ RESERVED   ->
             %not        {%id%} | %or        {%id%} | %print      {%id%} | %return    {%id%} |
             %step       {%id%} | %stop      {%id%} | %sub        {%id%} | 
             %then       {%id%} | %to        {%id%} | %while      {%id%} | %exit      {%id%} |
-            %exitwhile  {%id%} | %mod       {%id%} | %endfor     {%id%}
+            %exitwhile  {%id%} | %mod       {%id%} | %endfor     {%id%} |
+            %try        {%id%} | %catch     {%id%} | %endtry     {%id%} | %throw     {%id%}
 
 UNRESERVED ->
             %library {%id%} | %boolean {%id%} | %object {%id%} | %dynamic {%id%} | %void {%id%} | %integer {%id%} |
