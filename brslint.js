@@ -84,6 +84,9 @@ function unassignedVar(node, vars) {
     if (node.node == 'for') {
         defineVar(node.var.val, node.var)
     }
+    if (node.node == 'try' && node.catch) {
+        defineVar(node.catch[1].val, node.catch[1])
+    }
     if (node.node == 'id') {
         const lookupName = node.val.toLowerCase()
         if (vars.indexOf(lookupName) < 0 && !globals.has(lookupName) && !scoped.has(lookupName)) {
