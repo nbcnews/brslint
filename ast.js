@@ -153,13 +153,17 @@ function try_st(t) {
         node: 'try',
         statements: t[1],
         catch: t[3],
-        catch_statements: t[4]
+        catch_statements: t[4],
+
+        tokens: xtok(t)
     }
 }
 function throw_st(t) {
     return {
         node: 'throw',
-        throws: t[2]
+        throws: t[2],
+        
+        tokens: xtok(t)
     }
 }
 
