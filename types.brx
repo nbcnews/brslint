@@ -13,6 +13,9 @@ interface ifAssociativeArray<T: Object>
 end interface
 
 typedef AA = ifAssociativeArray
+typedef roAssociativeArray = ifAssociativeArray
+typedef roLongInteger = LongInteger
+typedef roInteger = Integer
 
 enum NodeChangeOperation
     none
@@ -1119,6 +1122,30 @@ interface roHMAC
     function Process(message as roByteArray) as roByteArray
     function Update(partialMesssage as roByteArray)
     function Final() as roByteArray
+end interface
+
+interface roXmlElement
+    function Parse(xml as String) as Boolean
+    function GetBody() as Object
+    function GetAttributes() as AA<String>
+    function GetName() as String
+    function GetText() as String
+    function GetChildElements() as Object 'roXMLList
+    function GetChildNodes() as Object
+    function GetNamedElements(name as String) as Object 'roXMLList
+    function GetNamedElementsCi(name as String) as Object 'roXMLList
+    function IsName(name as String) as Boolean
+    function HasAttribute(attr as String) as Boolean
+    function SetBody(body as Object) as Void
+    function AddBodyElement() as Object
+    function AddElement(name as String) as Object
+    function AddElementWithBody(name as String, body as Object) as Object
+    function AddText(text as String) as Void
+    function AddAttribute(attr as String, value as String) as Void
+    function SetName(name as String) as Void
+    function GenXML(gen_header as Boolean) as String
+    function GenXMLHdr(hdr as String) as String
+    function Clear() as Void
 end interface
 
 interface IRokuAds

@@ -55,6 +55,7 @@ module.exports = {
 
     lint: function (component, scopedFunctions) {
         if (!component) return []
+        scopedFunctions = scopedFunctions || new Map()
 
         let errors = []
 

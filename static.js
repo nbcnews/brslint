@@ -464,33 +464,7 @@ class Context {
     }
 
     resolveNamedType(type) {
-        if (!(type instanceof NamedType))
-            return type
-
-        const genericParams = type.generic || []
-        const optional = type.optional
-        while (type instanceof NamedType) {
-            const lookupName = type.name.toLowerCase()
-            type = this.types.get(lookupName)
-            if (!type) {
-                const basic = makeBasicType(lookupName, optional)
-                if (basic) {
-                    return basic
-                } else {
-                    this.warning(type, `undefined type ${lookupName}`, 2)
-                    return new ObjectType()
-                }
-            }
-        }
-
-        if (type.isGeneric()) {
-            let genericMap = type.generics().map((a,i)=>[a.name.val, typeFromNode(genericParams[i] || a.default)])
-            type = type.generize(genericMap)
-            type.genericTypes = genericMap.map(a => a[1])
-        }
-
-        type.optional = optional
-        return type
+        return resolveNamedType(type, this.types)
     }
 
     validateAccess(node, type, ctx, lval) {
@@ -548,8 +522,9 @@ class Context {
                         if (aggType instanceof InterfaceType) {
                             distype.estimatedType = aggType
                         }
-                        distype = typeOptions.map(a=>a.type).reduce(Type.aggregate)
-                    } else {
+                        // Problem with unresloved template parameters
+                        //distype = typeOptions.map(a=>a.type).reduce(Type.aggregate)
+                    //} else {
                         distype = new ObjectType()
                     }
                 } else {
@@ -863,6 +838,36 @@ function location(t) {
     }
 }
 
+function resolveNamedType(type, types) {
+    if (!(type instanceof NamedType))
+        return type
+
+    const genericParams = type.generic || []
+    const optional = type.optional
+    while (type instanceof NamedType) {
+        const lookupName = type.name.toLowerCase()
+        type = types.get(lookupName)
+        if (!type) {
+            const basic = makeBasicType(lookupName, optional)
+            if (basic) {
+                return basic
+            } else {
+                this.warning(type, `undefined type ${lookupName}`, 2)
+                return new ObjectType()
+            }
+        }
+    }
+
+    if (type.isGeneric()) {
+        let genericMap = type.generics().map((a,i)=>[a.name.val, typeFromNode(genericParams[i] || a.default)])
+        type = type.generize(genericMap)
+        type.genericTypes = genericMap.map(a => a[1])
+    }
+
+    type.optional = optional
+    return type
+}
+
 function accessorToString(node, end) {
     return node.val +
     (node.accessors || []).slice(0,end).map(a=>{
@@ -934,7 +939,7 @@ function makeType(typeString) {
             return new FloatType()
         case 'double':
             return new DoubleType()
-        case 'interer':
+        case 'integer':
         case 'int':
             return new IntegerType()
         case 'longinteger':
@@ -976,7 +981,26 @@ function makeType(typeString) {
     }
 }
 
+function interfaceFromBrxComponent(component, functions) {
+    let interface = new InterfaceType(component.extends.toLowerCase(), false, false)
+    interface.name = component.name
+
+    for (const member of component.members) {
+        if (member.node == 'property' && member.public) {
+            interface.add(member.name, typeFromNode(member.type))
+        }
+        if (member.public && (member.node == 'sub'|| member.node == 'function')) {
+            let lookupName = member.name.toLowerCase()
+            interface.add(lookupName, functions.get(lookupName))
+        }
+    }
+    return interface
+}
+
 function buildTypeFromComponent(component, functions) {
+    if (component.members) {
+        return interfaceFromBrxComponent(component, functions)
+    }
 
     let interface = new InterfaceType(component.extends.toLowerCase(), false)
     interface.name = component.name
@@ -1004,7 +1028,7 @@ function childIds(xmlNode) {
         if (!Array.isArray(child[1])) continue
 
         for (const entry of child[1]) {
-            if (entry.$.id) {
+            if (entry.$ && entry.$.id) {
                 ids.push([entry.$.id.toLowerCase(), new NamedType(child[0], false)])
             }
             ids.push(...childIds(entry))
@@ -1065,11 +1089,54 @@ function typeFromNode(node) {
         interfacen.generic = node.generic
         interfacen.name = node.name
         return interfacen
+    case 'typedef':
+        return typeFromNode(node.type)
+    case 'enum': 
+        return new EnumType(node.cases)
+    case 'function':
+    case 'sub':
+        const params = node.params.map(a => { return { type: typeFromNode(a.xtype) || makeBasicType(a.type || 'object'), optional: a.optional }})
+        const returnType = typeFromNode(node.type) || makeBasicType(node.return || 'void')
+        const ast = node.statements? node : null
+        const funcType = new Function(node.name, params, returnType, false, ast)
+        return funcType
     case 'const':
         return node.val == 'invalid' ? new InvalidType() : new BooleanType(node.val)
+   
     default:
         return null
     }
+}
+
+function resolveType(type, types) {
+    if (type instanceof TupleType) {
+        let clone = type.clone()
+        clone.types = type.types.map(a => resolveType(a, types))
+        return clone
+    }
+    if (type instanceof ArrayType) {
+        let clone = type.clone()
+        clone.elementType = resolveType(type.elementType, types)
+        return clone
+    }
+    if (type instanceof InterfaceType) {
+        let clone = type.clone()
+        for (const member of type.members) {
+            resolveType(member, types)
+            clone.add(name)
+        }
+        return clone
+    }
+    if (type instanceof Function) {
+        let clone = type.clone()
+        if (type.returnType){
+            clone.returnType = resolveType(type.returnType, types)
+        }
+        clone.params = type.params.map(a => resolveType(a, types))
+        return clone
+    }
+
+    return resolveNamedType(type, types)
 }
 
 module.exports = {
@@ -1135,32 +1202,30 @@ module.exports = {
         //console.log(JSON.stringify(compot))
         return errors
     },
-    typeFromComponent: (component, functions) => {
-        return buildTypeFromComponent(component, functions)
-    },
-    typesFromAST: (ast) => {
-        let types = new Map()
-        for (const typeAST of ast) {
-            const lookupName = typeAST.name.toLowerCase()
-            switch (typeAST.node) {
-                case 'interface':
-                    types.set(lookupName, typeFromNode(typeAST))
-                    break
-                case 'typedef':
-                    types.set(lookupName, typeFromNode(typeAST.type))
-                    break
-                case 'enum': 
-                    types.set(lookupName, new EnumType(typeAST.cases))
-                    break
-                case 'function':
-                case 'sub':
-                    const params = typeAST.params.map(a => { return { type: typeFromNode(a.xtype) || makeBasicType(a.type || 'object'), optional: a.optional }})
-                    const returnType = typeFromNode(typeAST.type) || makeBasicType(typeAST.return || 'void')
-                    const ast = typeAST.statements? typeAST : null
-                    const funcType = new Function(typeAST.name, params, returnType, false, ast)
-                    types.set(lookupName, funcType)
-                    break
+    typeFromComponent: buildTypeFromComponent,
+    resolveNamedType: resolveNamedType,
+    resolveBrxComponentTypes: (ast, types) => {
+        let component = ast.component
+        let public = new InterfaceType(component.extends, false, false)
+        public.base = types.get(component.extends.toLowerCase())
+        for (const member of component.members) {
+            if (member.node == 'property') {
+                member.xtype = resolveType(typeFromNode(member.type), types)
             }
+            if (member.node == 'sub'|| member.node == 'function') {
+                member.xtype = resolveType(typeFromNode(member), types)
+            }
+            if (member.public) {
+                public.add(member.name, member.xtype)
+            }
+        }
+        component.interface = public
+    },
+    typesFromAST: (declarations) => {
+        let types = new Map()
+        for (const typeAST of declarations) {
+            const lookupName = typeAST.name.toLowerCase()
+            types.set(lookupName, typeFromNode(typeAST))
         }
         return types
     }

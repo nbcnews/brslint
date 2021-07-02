@@ -375,8 +375,9 @@ class InterfaceType extends ObjectType {
     clone() {
         let clone = new InterfaceType(this.extends, this.optional, this.open)
         clone.name = this.name
-        clone.base = this.base //clone bast too?
+        clone.base = this.base //clone base too?
         clone.generic = this.generic
+        clone.genericTypes = this.genericTypes
         clone.members = new Map([...this.members.entries()].map(m => [m[0], m[1].clone()]))
         return clone
     }

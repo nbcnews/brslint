@@ -5,6 +5,7 @@
 const lint = require('./brslint.js'),
     xlint = require('./xmllint.js'),
     statica = require('./static'),
+    brxc = require('./brxc'),
     print = require('./pprint.js'),
     fs = require('fs'),
     pth = require('path'),
@@ -55,6 +56,7 @@ async function main() {
     Object.assign(codeByFile, embeddedByFile)
 
     resolveComponentFunctions(components, codeByFile, errors)
+    addBrxComponents(components, brxByFile)
     resolveInheritedFunctions(components)
 
     typeCheck(components, codeByFile, brxByFile, errors)
@@ -144,7 +146,7 @@ function parseBRXFiles(files, errors) {
     for (const file of files) {
         try {
             const input = fs.readFileSync(file, 'utf8')
-            const result = lint.parseExtensions(input)
+            const result = brxc.parse(input)
             if (result.ast) {
                 result.file = file
                 parsedFiles.push(result)
@@ -249,6 +251,41 @@ function resolveComponentFunctions(components, codeFiles, errors) {
     }
 }
 
+function addBrxComponents(components, brxFiles) {
+    for (const brx of brxFiles) {
+        let component = brx.ast.component
+        if (!component) continue
+
+        let functions = component.members
+            .filter(a=> a.node == 'sub' || a.node == 'function')
+            .reduce((m, v) => {
+                m.set(v.name.toLowerCase(), v)
+                return m
+            }, new Map())
+    
+        let types = brx.ast.declarations
+            .reduce((m, v) => {
+                m.set(v.name.toLowerCase(), v)
+                return m
+            }, new Map())
+
+        let componentEntry = {
+            component: {
+                name: component.name,
+                extends: component.extends,
+                fields: new Map(),
+                functions: new Map(),
+                members: component.members
+            },
+            errors: [],
+            file: brx.file,
+            functions: functions,
+            types: types
+        }
+        components.push(componentEntry)
+    }
+}
+
 function resolveInheritedFunctions(components) {
     for (const componentEntry of components) {
         copyFunctionsFromBase(components, componentEntry)
@@ -278,12 +315,16 @@ function typeCheck(components, codeFiles, brxFiles, errors) {
         let scopedFunctions = new Map([...globalFunctions, ...componentFunctions])
         componentEntry.scopedFunctions = scopedFunctions
 
-        globalTypes.set(component.name.toLowerCase(), statica.typeFromComponent(component, componentFunctions))
+        let type = statica.typeFromComponent(component, componentFunctions)
+        globalTypes.set(component.name.toLowerCase(), type)
     }
 
-    // types from brx files will override component interfaces with same name
     for (const brx of brxFiles) {
-        globalTypes = new Map([...globalTypes, ...statica.typesFromAST(brx.ast)])
+        //
+        globalTypes = new Map([...globalTypes, ...statica.typesFromAST(brx.ast.declarations)])
+        statica.resolveBrxComponentTypes(brx.ast, globalTypes)
+        brxc.rewriteAst(brx.ast, globalTypes)
+        brxc.generate(brx.ast, pth.join('build', pth.dirname(brx.file), pth.basename(brx.file, '.brx')))
     }
 
     for (const componentEntry of components) {
@@ -308,12 +349,19 @@ function typeCheck(components, codeFiles, brxFiles, errors) {
         componentEntry.types = types
         errors.push(...statica.check(componentEntry))
     }
+
+    // for (const brx of brxFiles) {
+    //     globalTypes = new Map([...globalTypes, ...statica.typesFromAST(brx.ast.declarations)])
+    //     //if (args.o) {
+    //         brxc.generate(brx.ast, pth.join('build', pth.dirname(brx.file), pth.basename(brx.file, '.brx')))
+    //     //}
+    // }
 }
 
 function parseInterfaceFile(path) {
     const input = fs.readFileSync(require.resolve(path), 'utf8')
-    const result = lint.parseExtensions(input)
-    return statica.typesFromAST(result.ast)
+    const result = brxc.parse(input)
+    return statica.typesFromAST(result.ast.declarations)
 }
 
 function scriptPath(path, base) {
@@ -507,7 +555,7 @@ function defaultConfig(args) {
     let config = {
         paths: {
             include: [args._[0] || '.'],
-            exclude: []
+            exclude: ['build']
         },
         recursive: args.recursive || true
     }

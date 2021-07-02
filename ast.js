@@ -6,6 +6,28 @@ function program(t) {
     }
 }
 
+function xprogram(t) {
+    let functions, component
+    const fnc = t[3] || []
+    if (fnc[0] && fnc[0].node == 'component') {
+        component = fnc[0]
+        functions = null
+    } else {
+        functions = fnc
+        component = null
+    }
+
+    return {
+        node: 'brx',
+        libs:       t[1],
+        declarations: t[2].map(a=>a[0]),
+        functions:  functions,
+        component: component,
+        tokens: xtok(t)
+    }
+}
+
+
 function libs(t) {
     t[1].comments = (t[0]||[]) .filter(a => a.node)
     let libs = t[2].map(lib => {
@@ -30,14 +52,35 @@ function functions(t) {
 }
 
 function func(t) {
-    const ret = t[7]? t[7][3].value : null
-    const statements = t[8]
+    let ret = t[7]? t[7][3].value : null
+    let statements = t[8]
 
     return {
         node: t[0].value,
         name: t[2].val,
         params: t[5].params,
         return: ret,
+        statements: statements,
+        li: {line: t[0].line, col: t[0].col},
+        tokens: xtok(t)
+    }
+}
+
+function xfunc(t) {
+    let ret, statements
+    if (t[0].type == "sub") {
+        ret = null
+        statements = t[7]
+    } else {
+        ret = t[10]
+        statements = t[11]
+    }
+
+    return {
+        node: t[0].value,
+        name: t[2].val,
+        params: t[5].params,
+        type: ret,
         statements: statements,
         li: {line: t[0].line, col: t[0].col},
         tokens: xtok(t)
@@ -310,9 +353,6 @@ function access(t) {
 }
 function prop(t) {
 //_ "." _ PROP_NAME
-    if (!t[3].name) {
-        var err=1
-    }
     return {
         node: 'prop',
         name: t[3].name,
@@ -490,10 +530,10 @@ function interface(t) {
 function iproperty(t) {
     return {
         node: 'property',
-        name: t[2].val,
-        type: t[6],
+        name: t[1].val,
+        type: t[5],
         readonly: t[0] != null,
-        li: t[2].li
+        li: t[1].li
     }
 }
 function ifunction(t) {
@@ -614,9 +654,45 @@ function templateParam(t) {
         default: t[1] ? t[1][3] : null
     }
 }
+function component(t) {
+    return {
+        node: 'component',
+        name: t[2].val,
+        extends: t[6].val,
+        members: t[7][0].map(a => a[1]),
+        li: t[2].li
+    }
+}
+function attribute(t) {
+    const params = t[2]? t[2][3].expressions : []
+    return {
+        node: 'attribute',
+        name: t[1].val,
+        expressions: params
+    }
+}
+function cproperty(t) {
+    return {
+        node: 'property',
+        name: t[3].val,
+        type: t[7],
+        attributes: t[0],
+        readonly: t[2] != null,
+        public: t[1] != null,
+        li: t[3].li
+    }
+}
+function cfunc(t) {
+    if (t[1]) {
+        t[2].public = true
+    }
+    t[2].attributes = t[0]
+    return t[2]
+}
 
 module.exports = {
     'program': program,
+    'xprogram': xprogram,
     'libs': libs,
     'lib': lib,
     'functions': functions,
@@ -663,6 +739,7 @@ module.exports = {
 
     //type extensions
     'declarations': declarations,
+    'xfunc': xfunc,
     'interface': interface,
     'iproperty': iproperty,
     'ifunction': ifunction,
@@ -679,7 +756,11 @@ module.exports = {
     'optional': optional,
     'genericType': genericType,
     'templateParam': templateParam,
-    'typedef': typedef
+    'typedef': typedef,
+    'attribute': attribute,
+    'cproperty': cproperty,
+    'component': component,
+    'cfunc': cfunc
 }
 
 

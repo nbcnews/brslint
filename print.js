@@ -1,6 +1,16 @@
+const { 
+    ObjectType, BooleanType, StringType,
+    IntegerType, LongIntegerType,
+    FloatType, DoubleType, Function
+} = require('./types')
+
 class Print {
     offset = ''
     showTypes = false
+    constructor(context) {
+        this.context = context
+    }
+
     increase() {
         this.offset += '    '
     }
@@ -20,10 +30,6 @@ class Print {
             out += '\n'
         }
         return out
-    }
-
-    printLibs(ast) {
-
     }
 
     printFunction(ast, signature) {
@@ -46,11 +52,13 @@ class Print {
         }
 
         let params = ast.params.map((p,i) => {
-            return p.name + ' as ' + signature.params[i].type
+            const d = p.default? ' = ' + this.expression(p.default) : ''
+            return p.name + d + ' as ' + signature.params[i].type
         }).join(', ')
 
         if (signature.returnType) {
-            out += `function ${ast.name}(${params}) as ${signature.returnType}\n`
+            let type = this.brsType(signature.returnType)
+            out += `function ${ast.name}(${params}) as ${type}\n`
         } else {
             out += `sub ${ast.name}(${params})\n`
         }
@@ -64,6 +72,38 @@ class Print {
         return out
     }
 
+    brsType(type) {
+        if (type.optional) {
+            return 'Object'
+        }
+        if (type instanceof StringType) {
+            return 'String'
+        }
+        if (type instanceof IntegerType) {
+            return 'Integer'
+        }
+        if (type instanceof BooleanType) {
+            return 'Integer'
+        }
+        if (type instanceof LongIntegerType) {
+            return 'LongInteger'
+        }
+        if (type instanceof FloatType) {
+            return 'Float'
+        }
+        if (type instanceof DoubleType) {
+            return 'Double'
+        }
+        if (type instanceof Function) {
+            return 'Function'
+        }
+        return 'Object'
+    }
+
+    componentType(type) {
+        
+    }
+
     statements(sts) {
         let out = ''
         this.increase()
@@ -74,6 +114,7 @@ class Print {
         this.decrease()
         return out
     }
+
     statement(st) {
         switch(st.node) {
         case 'id':
@@ -100,7 +141,14 @@ class Print {
         return this.accessor(st)
     }
     print(st) {
-        return 'print ...'
+        const items = st.items.map(a => {
+            if (a.node === 'separator') {
+                return a.val
+            } else {
+                return this.expression(a)
+            }
+        })
+        return 'print ' + items.join('')
     }
     dim (st) {  
         return `dim ...`
@@ -168,6 +216,13 @@ class Print {
 
     accessor(id) {
         let out = id.val
+        if (this.context && id.val == 'm' && id.accessors && id.accessors[0].name) {
+            let member = this.context.member(id.accessors[0].name)
+            if (member) {
+                out += '.top'
+            }
+        }
+    
         for (const a of id.accessors || []) {
             switch(a.node) {
             case 'prop':
@@ -194,12 +249,17 @@ class Print {
         return out
     }
 
-    expression(exp) {
+    expression(exp, nextop, side) {
+        nextop = nextop || { p: 0, right: false }
+        side = side || 'left'
         switch (exp.node) {
             case 'bop':
-                return `${this.expression(exp.left)} ${exp.op} ${this.expression(exp.right)}`
+                const op = bop[exp.op]
+                let ex = `${this.expression(exp.left, op)} ${exp.op} ${this.expression(exp.right, op, 'right')}`
+                let parentheses = nextop.p > op.p || (nextop.p === op.p && side != op.a)
+                return parentheses ? '(' + ex + ')' : ex
             case 'uop':
-                return `${exp.op} ${this.expression(exp.right)} `
+                return `${exp.op}${uop[exp.op].sp}${this.expression(exp.right)} `
             case 'id':
                 return this.accessor(exp)
             case 'const':
@@ -211,7 +271,7 @@ class Print {
             case 'object':
                 return this.object(exp)
             case 'array':
-                return '[]'
+                return this.array(exp)
             case 'function':
             case 'sub':
                 return this.printFunction(exp, exp.xtype)
@@ -236,6 +296,23 @@ class Print {
         return out
     }
 
+    array(exp) {
+        let values = exp.values.map((val) => {
+            return this.expression(val)
+        }).join(', ')
+
+        if (values.length < 60) {
+            return `[${values}]`
+        }
+
+        this.increase()
+        values = exp.values.map((val) => {
+            return this.offset + this.expression(val) + '\n'
+        }).join('')
+        this.decrease()
+        return `[\n${values}${this.offset}]`
+    }
+
     printType(type) {
         let str = type.toString()
 
@@ -245,4 +322,72 @@ class Print {
 
 module.exports = {
     Print: Print
+}
+
+// precedence, and right assosiativity
+const bop = {
+    'or' :  { p: 1, a: 'left' },
+    'and' : { p: 2, a: 'left' },
+    '=':    { p: 4, a: 'left' }, '<>': { p: 4, a: 'left' }, '<': { p: 4, a: 'left' },
+    '>':    { p: 4, a: 'left' }, '<=': { p: 4, a: 'left' }, '>=': { p: 4, a: 'left' },
+    '>>':   { p: 5, a: 'left' }, '<<': { p: 5, a: 'left' },
+    '+':    { p: 6, a: 'left' }, '-': { p: 6, a: 'left' },
+    '*':    { p: 7, a: 'left' }, '/': { p: 7, a: 'left' }, '\\': { p: 7, a: 'left' }, 'mod': { p: 7, a: 'left' },
+    '^':    { p: 8, a: 'right' },
+    '.':    { p: 10, a: 'left' }
+}
+const uop = {
+    'not' : { p: 3, a: 'right', sp: ' ' },
+    '-': { p: 9, a: 'right', sp: '' }
+}
+
+
+class AstWalk {
+    constructor() {
+    }
+
+    walk(ast) {
+        let params = ast.params
+
+        //${ast.name}(${params}) as ${type}
+        //${ast.name}(${params})
+        this.function(ast, ast.name, params, ast.type)
+        for (const statement of ast.statements) {
+            this.wstatement(statement)
+        }
+        this.endfunction(ast, ast.name, params, ast.type)
+    }
+    wstatement(statement) {
+        this.statement(statement, statement.name)
+
+        switch(st.node) {
+        case 'id':
+            return this.call(st)
+        case '=':
+            return this.assignop(st)
+        case 'if':
+        case 'assignop':
+        case 'dim':
+        case 'for':
+        case 'foreach':
+        case 'while':
+        case 'return':
+        case 'exitfor':
+        case 'exitwhile':
+        case 'stop':
+        case 'end':
+        case 'print':
+            return this[st.node](st)
+        }
+    }
+
+    //-------------
+
+    function(node, name, params, type) {
+    }
+    endfunction(node, name, params, type) {
+    }
+
+    statement(statement, name) {
+    }
 }

@@ -51,7 +51,7 @@ function objfun(obj as Object, interface as Object, method as String) as Object
 
 ' Utility Functions
 function formatjson(obj as Object, flags? as Integer) as String
-function parsejson(jsonString as String) as Object
+function parsejson(jsonString as String) as AA
 function sleep(milliseconds as Integer)
 function wait(milliseconds as Integer, port as roMessagePort) as Object
 function getinterface(object as Object, name as String) as Object
